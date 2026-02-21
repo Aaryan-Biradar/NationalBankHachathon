@@ -243,12 +243,23 @@ The model is evaluated on:
 
 ### One-command Docker setup
 ```bash
-docker compose up --build
+docker compose up -d --build
+docker compose ps
 ```
 
 This starts:
-- Backend API at `http://localhost:8000`
-- Frontend at `http://localhost:5173`
+- Backend API at `http://localhost:8001`
+- Frontend at `http://localhost:5174`
+
+Stop services:
+```bash
+docker compose down
+```
+
+If you want custom ports:
+```bash
+BACKEND_PORT=8000 FRONTEND_PORT=5173 docker compose up -d --build
+```
 
 ### Python setup (preferred: uv)
 ```bash
@@ -273,7 +284,7 @@ npm run dev  # Start development server
 
 ### Usage
 
-1. Open the web interface (typically `http://localhost:5173`)
+1. Open the web interface (typically `http://localhost:5174`)
 2. Upload your trading CSV file or manually enter trades
 3. View bias analysis and get personalized recommendations
 4. Export insights and action plans

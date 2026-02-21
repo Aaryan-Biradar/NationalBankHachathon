@@ -89,6 +89,7 @@ class AnalysisResponse(BaseModel):
     session_id: str
     biases_detected: List[BiasDetectionResult]
     summary: AnalysisSummaryRecord
+    csv_summary: Optional[CsvProcessingSummary] = None
 
 
 class ExcludeCriteria(BaseModel):

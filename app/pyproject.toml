@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "hackathon2"
 version = "0.1.0"
@@ -7,7 +11,6 @@ requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.129.1",
     "lightgbm>=4.6.0",
-    "pandas>=3.0.1",
     "polars>=1.38.1",
     "python-multipart>=0.0.22",
     "uvicorn>=0.41.0",
@@ -32,3 +35,6 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["F", "I"]
+
+[tool.setuptools.packages.find]
+include = ["api*"]

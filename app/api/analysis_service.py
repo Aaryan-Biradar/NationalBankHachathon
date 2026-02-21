@@ -2,9 +2,9 @@ import numpy as np
 import polars as pl
 import xgboost as xgb
 
+from . import state
 from .data_service import get_last_numeric_value
 from .schemas import BiasDetectionResult, MetricsRecord, TraderAnalysis
-from . import state
 
 RECOMMENDATIONS_MAP = {
     "calm_trader": [
