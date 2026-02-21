@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react'
 import type { AnalysisResult, BiasKey, SessionHistoryItem } from './types'
 import { getBiasLabel, getRiskLabel, getTraderTypeLabel, translateEvidenceLine, useI18n } from './i18n'
+import TradingHeatmap from './components/TradingHeatmap'
 
 const round = (value: number) => Math.round(value * 100) / 100
 const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(n % 1 === 0 ? 0 : 2)
@@ -423,6 +424,12 @@ export default function AnalysisPage({ analysis, history, onBack, onSave, onLoad
                         </article>
                     </div>
                 </section>
+
+                {analysis.trades && analysis.trades.length > 0 && (
+                    <section id="trading-heatmap" className="card">
+                        <TradingHeatmap trades={analysis.trades} />
+                    </section>
+                )}
 
                 {/* ── Saved History ── */}
                 <section id="saved-history" className="card">
