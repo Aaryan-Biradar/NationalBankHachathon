@@ -4,7 +4,18 @@ import xgboost as xgb
 
 from . import state
 from .data_service import get_last_numeric_value
-from .schemas import BiasDetectionResult, MetricsRecord, TraderAnalysis
+from .schemas import (
+    BiasDetectionResult,
+    FrontendPayload,
+    HeatmapModeData,
+    HeatmapPayload,
+    MetricsRecord,
+    PnLDistribution,
+    TraderAnalysis,
+)
+
+MAX_CUMULATIVE_POINTS = 1200
+PNL_HISTOGRAM_BINS = 20
 
 RECOMMENDATIONS_MAP = {
     "calm_trader": [
@@ -348,6 +359,182 @@ def calculate_performance_metrics(df: pl.DataFrame) -> MetricsRecord:
         "avg_profit_per_trade": round(avg_pl, 2),
         "max_drawdown": round(max_drawdown, 2),
     }
+
+
+def _evenly_sample(values: list[float], max_points: int) -> list[float]:
+    if len(values) <= max_points:
+        return values
+    step = (len(values) - 1) / (max_points - 1)
+    return [float(values[round(i * step)]) for i in range(max_points)]
+
+
+def build_frontend_payload(df: pl.DataFrame) -> FrontendPayload:
+    if df.height == 0:
+        return FrontendPayload(
+            cumulative_pnl=[],
+            hourly_activity=[0] * 24,
+            win_count=0,
+            loss_count=0,
+            average_win=0.0,
+            average_loss=0.0,
+            trades_per_hour=0.0,
+            max_hourly_trades=0,
+            pnl_distribution=PnLDistribution(min=0.0, max=0.0, buckets=[0] * PNL_HISTOGRAM_BINS),
+            heatmap=HeatmapPayload(
+                one_hour=HeatmapModeData(cols=24, sums=[0.0] * (7 * 24), counts=[0] * (7 * 24)),
+                two_hour=HeatmapModeData(cols=12, sums=[0.0] * (7 * 12), counts=[0] * (7 * 12)),
+                four_hour=HeatmapModeData(cols=6, sums=[0.0] * (7 * 6), counts=[0] * (7 * 6)),
+                session=HeatmapModeData(cols=4, sums=[0.0] * (7 * 4), counts=[0] * (7 * 4)),
+            ),
+        )
+
+    work_df = df.with_columns(
+        [
+            pl.col("profit_loss").cast(pl.Float64, strict=False).fill_null(0.0).alias("_pnl"),
+            pl.col("timestamp")
+            .cast(pl.Utf8)
+            .str.strptime(pl.Datetime, strict=False)
+            .alias("_timestamp"),
+        ]
+    )
+
+    pnl_values = work_df.get_column("_pnl").to_numpy()
+    cumulative = np.cumsum(pnl_values).tolist()
+    cumulative_sampled = _evenly_sample([float(v) for v in cumulative], MAX_CUMULATIVE_POINTS)
+
+    win_mask = pnl_values > 0
+    loss_mask = pnl_values < 0
+    win_count = int(np.count_nonzero(win_mask))
+    loss_count = int(np.count_nonzero(loss_mask))
+    average_win = float(np.mean(pnl_values[win_mask])) if win_count > 0 else 0.0
+    average_loss = float(abs(np.mean(pnl_values[loss_mask]))) if loss_count > 0 else 0.0
+
+    hourly_counts = [0] * 24
+    hourly_df = (
+        work_df.filter(pl.col("_timestamp").is_not_null())
+        .with_columns(pl.col("_timestamp").dt.hour().alias("_hour"))
+        .group_by("_hour")
+        .len()
+    )
+    for row in hourly_df.iter_rows(named=True):
+        hour = int(row["_hour"])
+        count = int(row["len"])
+        if 0 <= hour < 24:
+            hourly_counts[hour] = count
+
+    max_hourly_trades = max(hourly_counts) if hourly_counts else 0
+
+    valid_ts_df = work_df.filter(pl.col("_timestamp").is_not_null())
+    if valid_ts_df.height > 0:
+        first_ts = valid_ts_df.select(pl.col("_timestamp").min()).item()
+        last_ts = valid_ts_df.select(pl.col("_timestamp").max()).item()
+        span_seconds = max((last_ts - first_ts).total_seconds(), 3600.0)
+        trades_per_hour = float(df.height / (span_seconds / 3600.0))
+    else:
+        trades_per_hour = float(df.height)
+
+    non_zero_pnl = pnl_values[pnl_values != 0]
+    if non_zero_pnl.size > 0:
+        hist, bin_edges = np.histogram(non_zero_pnl, bins=PNL_HISTOGRAM_BINS)
+        pnl_min = float(bin_edges[0])
+        pnl_max = float(bin_edges[-1])
+        pnl_buckets = [int(v) for v in hist.tolist()]
+    else:
+        pnl_min = 0.0
+        pnl_max = 0.0
+        pnl_buckets = [0] * PNL_HISTOGRAM_BINS
+
+    ts_non_null = valid_ts_df.with_columns(
+        [
+            pl.col("_timestamp").dt.strftime("%w").cast(pl.Int32).alias("_day"),
+            pl.col("_timestamp").dt.hour().alias("_hour"),
+        ]
+    ).select(["_day", "_hour", "_pnl"])
+
+    day_values = ts_non_null.get_column("_day").to_numpy()
+    hour_values = ts_non_null.get_column("_hour").to_numpy()
+    pnl_non_null = ts_non_null.get_column("_pnl").to_numpy()
+
+    one_hour_sums = np.zeros(7 * 24, dtype=np.float64)
+    one_hour_counts = np.zeros(7 * 24, dtype=np.int32)
+    two_hour_sums = np.zeros(7 * 12, dtype=np.float64)
+    two_hour_counts = np.zeros(7 * 12, dtype=np.int32)
+    four_hour_sums = np.zeros(7 * 6, dtype=np.float64)
+    four_hour_counts = np.zeros(7 * 6, dtype=np.int32)
+    session_sums = np.zeros(7 * 4, dtype=np.float64)
+    session_counts = np.zeros(7 * 4, dtype=np.int32)
+
+    for idx in range(len(day_values)):
+        day = int(day_values[idx])
+        hour = int(hour_values[idx])
+        pnl = float(pnl_non_null[idx])
+
+        if day < 0 or day > 6 or hour < 0 or hour > 23:
+            continue
+
+        one_idx = day * 24 + hour
+        one_hour_sums[one_idx] += pnl
+        one_hour_counts[one_idx] += 1
+
+        two_col = hour // 2
+        two_idx = day * 12 + two_col
+        two_hour_sums[two_idx] += pnl
+        two_hour_counts[two_idx] += 1
+
+        four_col = hour // 4
+        four_idx = day * 6 + four_col
+        four_hour_sums[four_idx] += pnl
+        four_hour_counts[four_idx] += 1
+
+        if hour < 6:
+            session_col = 0
+        elif hour < 12:
+            session_col = 1
+        elif hour < 18:
+            session_col = 2
+        else:
+            session_col = 3
+        session_idx = day * 4 + session_col
+        session_sums[session_idx] += pnl
+        session_counts[session_idx] += 1
+
+    return FrontendPayload(
+        cumulative_pnl=[float(v) for v in cumulative_sampled],
+        hourly_activity=[int(v) for v in hourly_counts],
+        win_count=win_count,
+        loss_count=loss_count,
+        average_win=round(average_win, 2),
+        average_loss=round(average_loss, 2),
+        trades_per_hour=round(trades_per_hour, 4),
+        max_hourly_trades=int(max_hourly_trades),
+        pnl_distribution=PnLDistribution(
+            min=pnl_min,
+            max=pnl_max,
+            buckets=pnl_buckets,
+        ),
+        heatmap=HeatmapPayload(
+            one_hour=HeatmapModeData(
+                cols=24,
+                sums=[float(v) for v in one_hour_sums.tolist()],
+                counts=[int(v) for v in one_hour_counts.tolist()],
+            ),
+            two_hour=HeatmapModeData(
+                cols=12,
+                sums=[float(v) for v in two_hour_sums.tolist()],
+                counts=[int(v) for v in two_hour_counts.tolist()],
+            ),
+            four_hour=HeatmapModeData(
+                cols=6,
+                sums=[float(v) for v in four_hour_sums.tolist()],
+                counts=[int(v) for v in four_hour_counts.tolist()],
+            ),
+            session=HeatmapModeData(
+                cols=4,
+                sums=[float(v) for v in session_sums.tolist()],
+                counts=[int(v) for v in session_counts.tolist()],
+            ),
+        ),
+    )
 
 
 def build_bias_detection_results(all_bias_scores: dict[str, float]) -> list[BiasDetectionResult]:

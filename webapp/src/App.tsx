@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import './index.css'
 import AnalysisPage from './AnalysisPage'
-import { API_BASE_URL, analyzeTrading, getTrades, mapApiResponseToAnalysis, uploadTradingHistory } from './lib/api'
+import { API_BASE_URL, analyzeTrading, mapApiResponseToAnalysis, uploadTradingHistory } from './lib/api'
 import type { AnalysisResult, SessionHistoryItem, TraderType } from './types'
 import { useI18n } from './i18n'
 
@@ -76,16 +76,11 @@ function App() {
       // Upload file directly to API
       const sessionId = await uploadTradingHistory(file)
 
-      // Avoid waterfall: fetch both endpoints in parallel
-      const [apiResponse, fetchedTrades] = await Promise.all([
-        analyzeTrading(sessionId),
-        getTrades(sessionId),
-      ])
+      const apiResponse = await analyzeTrading(sessionId)
       
-      // Map API response to frontend format
-      const result = mapApiResponseToAnalysis(apiResponse, fetchedTrades)
+      const result = mapApiResponseToAnalysis(apiResponse)
       
-      setTradesCount(fetchedTrades.length)
+      setTradesCount(result.metrics.totalTrades)
       setAnalysis(result)
       
       if (result) {

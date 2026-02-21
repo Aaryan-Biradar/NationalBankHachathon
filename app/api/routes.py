@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
 from .analysis_service import (
+    build_frontend_payload,
     build_bias_detection_results,
     calculate_performance_metrics,
     predict_trader_type_analysis,
@@ -16,7 +17,6 @@ from .data_service import (
     get_last_numeric_value,
     get_trades_in_range,
     optional_float,
-    parse_csv_file,
     parse_csv_file_with_summary,
     record_to_trade_entry,
     timestamp_to_iso,
@@ -331,6 +331,7 @@ async def analyze_trading_history(session_id: str):
             ).item()
         )
         win_count = df.filter(pl.col("profit_loss").cast(pl.Float64, strict=False) > 0).height
+        frontend_payload = build_frontend_payload(df)
 
         return AnalysisResponse(
             session_id=session_id,
@@ -342,6 +343,7 @@ async def analyze_trading_history(session_id: str):
                 "primary_trader_type": trader_type_analysis["type"],
             },
             csv_summary=csv_processing_summaries.get(session_id),
+            frontend_payload=frontend_payload,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(exc)}")

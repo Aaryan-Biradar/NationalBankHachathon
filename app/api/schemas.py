@@ -90,6 +90,39 @@ class AnalysisResponse(BaseModel):
     biases_detected: List[BiasDetectionResult]
     summary: AnalysisSummaryRecord
     csv_summary: Optional[CsvProcessingSummary] = None
+    frontend_payload: Optional[FrontendPayload] = None
+
+
+class PnLDistribution(BaseModel):
+    min: float
+    max: float
+    buckets: List[int]
+
+
+class HeatmapModeData(BaseModel):
+    cols: int
+    sums: List[float]
+    counts: List[int]
+
+
+class HeatmapPayload(BaseModel):
+    one_hour: HeatmapModeData
+    two_hour: HeatmapModeData
+    four_hour: HeatmapModeData
+    session: HeatmapModeData
+
+
+class FrontendPayload(BaseModel):
+    cumulative_pnl: List[float]
+    hourly_activity: List[int]
+    win_count: int
+    loss_count: int
+    average_win: float
+    average_loss: float
+    trades_per_hour: float
+    max_hourly_trades: int
+    pnl_distribution: PnLDistribution
+    heatmap: HeatmapPayload
 
 
 class ExcludeCriteria(BaseModel):

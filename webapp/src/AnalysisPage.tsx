@@ -211,53 +211,31 @@ const WinLossDonut = memo(function WinLossDonut({ winRate, totalTrades }: { winR
     )
 })
 
-const PnLDistribution = memo(function PnLDistribution({ trades }: { trades: AnalysisResult['trades'] }) {
+const PnLDistribution = memo(function PnLDistribution({
+    distribution,
+}: {
+    distribution: AnalysisResult['chartData']['pnlDistribution']
+}) {
     const { t } = useI18n()
-    if (!trades || trades.length < 2) return <p className="empty-state">{t('analysis.notEnoughData')}</p>
+    if (!distribution || distribution.buckets.length === 0) return <p className="empty-state">{t('analysis.notEnoughData')}</p>
 
-    const distribution = useMemo(() => {
-        const pnls = trades.map((t) => t.profitLoss ?? 0).filter((v) => v !== 0)
-        if (!pnls.length) return null
-
-        let min = Infinity
-        let max = -Infinity
-        for (const v of pnls) {
-            if (v < min) min = v
-            if (v > max) max = v
-        }
-
-        const bins = 20
-        const binW = (max - min) / bins || 1
-        const buckets = new Array(bins).fill(0)
-        for (const v of pnls) {
-            const idx = Math.min(Math.floor((v - min) / binW), bins - 1)
-            buckets[idx] += 1
-        }
-
-        return {
-            min,
-            max,
-            bins,
-            buckets,
-            maxCount: Math.max(...buckets, 1),
-            zeroBin: min >= 0 ? -1 : Math.min(Math.floor((0 - min) / binW), bins - 1),
-        }
-    }, [trades])
-
-    if (!distribution) return <p className="empty-state">{t('analysis.noPnlData')}</p>
+    const bins = distribution.buckets.length
+    const maxCount = Math.max(...distribution.buckets, 1)
+    const binW = (distribution.max - distribution.min) / bins || 1
+    const zeroBin = distribution.min >= 0 ? -1 : Math.min(Math.floor((0 - distribution.min) / binW), bins - 1)
 
     const W = 560, H = 150, PAD = { t: 10, r: 12, b: 24, l: 12 }
     const plotW = W - PAD.l - PAD.r, plotH = H - PAD.t - PAD.b
-    const bW = plotW / distribution.bins - 2
+    const bW = plotW / bins - 2
 
     return (
         <svg viewBox={`0 0 ${W} ${H}`} className="chart-svg" preserveAspectRatio="xMidYMid meet">
             <line x1={PAD.l} x2={W - PAD.r} y1={PAD.t + plotH} y2={PAD.t + plotH} stroke="var(--line)" strokeWidth="1" />
             {distribution.buckets.map((count, i) => {
-                const barH = (count / distribution.maxCount) * plotH
-                const x = PAD.l + (i / distribution.bins) * plotW + 1
+                const barH = (count / maxCount) * plotH
+                const x = PAD.l + (i / bins) * plotW + 1
                 const y = PAD.t + plotH - barH
-                const isNeg = i <= distribution.zeroBin
+                const isNeg = i <= zeroBin
                 return (
                     <rect key={i} x={x} y={y} width={bW} height={barH} rx="2"
                         fill={isNeg ? '#D93236' : '#087A67'} opacity="0.7" />
@@ -420,14 +398,14 @@ export default function AnalysisPage({ analysis, history, onBack, onSave, onLoad
                         {/* Row 3: P/L Distribution */}
                         <article className="chart-card chart-full">
                             <h3>📊 {t('analysis.pnlDistribution')}</h3>
-                            <PnLDistribution trades={analysis.trades} />
+                            <PnLDistribution distribution={analysis.chartData.pnlDistribution} />
                         </article>
                     </div>
                 </section>
 
-                {analysis.trades && analysis.trades.length > 0 && (
+                {(analysis.heatmap || (analysis.trades && analysis.trades.length > 0)) && (
                     <section id="trading-heatmap" className="card">
-                        <TradingHeatmap trades={analysis.trades} />
+                        <TradingHeatmap trades={analysis.trades} heatmap={analysis.heatmap} />
                     </section>
                 )}
 

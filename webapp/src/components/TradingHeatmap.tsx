@@ -1,12 +1,13 @@
 import { memo, useMemo, useState } from 'react'
-import type { Trade } from '../types'
+import type { HeatmapData, Trade } from '../types'
 import { useI18n } from '../i18n'
 
 type DensityMode = 'trades' | 'pnl' | 'avgPnl'
 type ColumnMode = '1hour' | '2hour' | '4hour' | 'session'
 
 interface TradingHeatmapProps {
-  trades: Trade[]
+  trades?: Trade[]
+  heatmap?: HeatmapData
 }
 
 function getColumnCount(mode: ColumnMode): number {
@@ -33,7 +34,7 @@ function formatCellLabel(col: number, mode: ColumnMode, labels: { asian: string;
   return [labels.asian, labels.european, labels.us, labels.after][col] || ''
 }
 
-function TradingHeatmap({ trades }: TradingHeatmapProps) {
+function TradingHeatmap({ trades = [], heatmap }: TradingHeatmapProps) {
   const { t } = useI18n()
   const [densityMode, setDensityMode] = useState<DensityMode>('pnl')
   const [columnMode, setColumnMode] = useState<ColumnMode>('1hour')
@@ -57,20 +58,53 @@ function TradingHeatmap({ trades }: TradingHeatmapProps) {
 
   const aggregatesByColumnMode = useMemo(() => {
     const modes: ColumnMode[] = ['1hour', '2hour', '4hour', 'session']
+
+    const labelsForMode = (mode: ColumnMode, cols: number) =>
+      Array.from({ length: cols }, (_, col) =>
+        formatCellLabel(col, mode, {
+          asian: t('heatmap.session.asian'),
+          european: t('heatmap.session.european'),
+          us: t('heatmap.session.us'),
+          after: t('heatmap.session.after'),
+        }),
+      )
+
+    if (heatmap) {
+      return {
+        '1hour': {
+          cols: heatmap.oneHour.cols,
+          labels: labelsForMode('1hour', heatmap.oneHour.cols),
+          sums: Float64Array.from(heatmap.oneHour.sums),
+          counts: Uint32Array.from(heatmap.oneHour.counts),
+        },
+        '2hour': {
+          cols: heatmap.twoHour.cols,
+          labels: labelsForMode('2hour', heatmap.twoHour.cols),
+          sums: Float64Array.from(heatmap.twoHour.sums),
+          counts: Uint32Array.from(heatmap.twoHour.counts),
+        },
+        '4hour': {
+          cols: heatmap.fourHour.cols,
+          labels: labelsForMode('4hour', heatmap.fourHour.cols),
+          sums: Float64Array.from(heatmap.fourHour.sums),
+          counts: Uint32Array.from(heatmap.fourHour.counts),
+        },
+        session: {
+          cols: heatmap.session.cols,
+          labels: labelsForMode('session', heatmap.session.cols),
+          sums: Float64Array.from(heatmap.session.sums),
+          counts: Uint32Array.from(heatmap.session.counts),
+        },
+      }
+    }
+
     const entries = modes.map((mode) => {
       const cols = getColumnCount(mode)
       return [
         mode,
         {
           cols,
-          labels: Array.from({ length: cols }, (_, col) =>
-            formatCellLabel(col, mode, {
-              asian: t('heatmap.session.asian'),
-              european: t('heatmap.session.european'),
-              us: t('heatmap.session.us'),
-              after: t('heatmap.session.after'),
-            }),
-          ),
+          labels: labelsForMode(mode, cols),
           sums: new Float64Array(7 * cols),
           counts: new Uint32Array(7 * cols),
         },
@@ -95,7 +129,7 @@ function TradingHeatmap({ trades }: TradingHeatmapProps) {
     }
 
     return result
-  }, [parsedTrades, t])
+  }, [heatmap, parsedTrades, t])
 
   const heatmapData = useMemo(() => {
     const aggregate = aggregatesByColumnMode[columnMode]

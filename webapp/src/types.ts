@@ -34,6 +34,27 @@ export interface RiskProfile {
   rationale: string
 }
 
+export type HeatmapMode = '1hour' | '2hour' | '4hour' | 'session'
+
+export interface HeatmapModeData {
+  cols: number
+  sums: number[]
+  counts: number[]
+}
+
+export interface HeatmapData {
+  oneHour: HeatmapModeData
+  twoHour: HeatmapModeData
+  fourHour: HeatmapModeData
+  session: HeatmapModeData
+}
+
+export interface PnLDistributionData {
+  min: number
+  max: number
+  buckets: number[]
+}
+
 export interface AnalysisResult {
   biases: Record<BiasKey, BiasResult>
   traderType: TraderType
@@ -59,8 +80,10 @@ export interface AnalysisResult {
   chartData: {
     cumulativePnL: number[]
     hourlyActivity: number[]
+    pnlDistribution: PnLDistributionData
   }
-  trades?: Trade[]  // Store trades for detailed analysis
+  heatmap?: HeatmapData
+  trades?: Trade[]
 }
 
 export interface SessionHistoryItem {

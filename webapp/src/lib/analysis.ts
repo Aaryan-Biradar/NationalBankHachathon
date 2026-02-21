@@ -320,6 +320,30 @@ export const analyzeTrades = (trades: Trade[]): AnalysisResult => {
       ? Math.max(1, (totalTimes[totalTimes.length - 1] - totalTimes[0]) / (1000 * 60 * 60))
       : 1
 
+  const nonZeroPnL = pnlSequence.filter((value) => value !== 0)
+  let pnlDistribution = {
+    min: 0,
+    max: 0,
+    buckets: new Array<number>(20).fill(0),
+  }
+
+  if (nonZeroPnL.length > 0) {
+    let min = Infinity
+    let max = -Infinity
+    for (const value of nonZeroPnL) {
+      if (value < min) min = value
+      if (value > max) max = value
+    }
+    const bins = 20
+    const width = (max - min) / bins || 1
+    const buckets = new Array<number>(bins).fill(0)
+    for (const value of nonZeroPnL) {
+      const idx = Math.min(Math.floor((value - min) / width), bins - 1)
+      buckets[idx] += 1
+    }
+    pnlDistribution = { min, max, buckets }
+  }
+
   return {
     biases: {
       overtrading,
@@ -348,6 +372,7 @@ export const analyzeTrades = (trades: Trade[]): AnalysisResult => {
     chartData: {
       cumulativePnL,
       hourlyActivity,
+      pnlDistribution,
     },
   }
 }

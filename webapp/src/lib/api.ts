@@ -63,6 +63,27 @@ interface ApiAnalysisResponse {
     balance_fixes?: number
     warnings?: string[]
   }
+  frontend_payload?: {
+    cumulative_pnl: number[]
+    hourly_activity: number[]
+    win_count: number
+    loss_count: number
+    average_win: number
+    average_loss: number
+    trades_per_hour: number
+    max_hourly_trades: number
+    pnl_distribution: {
+      min: number
+      max: number
+      buckets: number[]
+    }
+    heatmap: {
+      one_hour: { cols: number; sums: number[]; counts: number[] }
+      two_hour: { cols: number; sums: number[]; counts: number[] }
+      four_hour: { cols: number; sums: number[]; counts: number[] }
+      session: { cols: number; sums: number[]; counts: number[] }
+    }
+  }
 }
 
 const MAX_RENDER_TRADES = 4000
@@ -132,7 +153,7 @@ export async function getTrades(sessionId: string, signal?: AbortSignal): Promis
 
 export function mapApiResponseToAnalysis(
   apiResponse: ApiAnalysisResponse,
-  trades: Trade[]
+  trades: Trade[] = []
 ): AnalysisResult {
   // Extract bias scores from API response
   const biasMap: Record<string, number> = {}
@@ -141,47 +162,58 @@ export function mapApiResponseToAnalysis(
     biasMap[normalizedType] = bias.confidence_score * 100 // Convert 0-1 to 0-100
   })
 
-  const hourlyActivity = new Array<number>(24).fill(0)
-  const cumulativePnLRaw: number[] = []
-  let cumulative = 0
-  let firstTimestamp = Number.NaN
-  let lastTimestamp = Number.NaN
-  let winCount = 0
-  let winSum = 0
-  let lossCount = 0
-  let lossSum = 0
+  const payload = apiResponse.frontend_payload
 
-  for (const trade of trades) {
-    const timestamp = new Date(trade.timestamp).getTime()
-    if (Number.isFinite(timestamp)) {
-      if (Number.isNaN(firstTimestamp)) firstTimestamp = timestamp
-      lastTimestamp = timestamp
-      hourlyActivity[new Date(timestamp).getHours()] += 1
+  let hourlyActivity = payload?.hourly_activity ?? new Array<number>(24).fill(0)
+  let cumulativePnLRaw: number[] = []
+  let cumulativePnL = payload?.cumulative_pnl ?? []
+  let winCount = payload?.win_count ?? 0
+  let lossCount = payload?.loss_count ?? 0
+  let averageWin = payload?.average_win ?? 0
+  let averageLoss = payload?.average_loss ?? 0
+  let tradesPerHour = payload?.trades_per_hour ?? 0
+  let maxHourlyTrades = payload?.max_hourly_trades ?? 0
+  const chartTrades = evenlySample(trades, MAX_RENDER_TRADES)
+
+  if (!payload) {
+    let cumulative = 0
+    let firstTimestamp = Number.NaN
+    let lastTimestamp = Number.NaN
+    let winSum = 0
+    let lossSum = 0
+
+    for (const trade of trades) {
+      const timestamp = new Date(trade.timestamp).getTime()
+      if (Number.isFinite(timestamp)) {
+        if (Number.isNaN(firstTimestamp)) firstTimestamp = timestamp
+        lastTimestamp = timestamp
+        hourlyActivity[new Date(timestamp).getHours()] += 1
+      }
+
+      const pnl = trade.profitLoss ?? 0
+      if (pnl > 0) {
+        winCount += 1
+        winSum += pnl
+      } else if (pnl < 0) {
+        lossCount += 1
+        lossSum += pnl
+      }
+
+      cumulative += pnl
+      cumulativePnLRaw.push(cumulative)
     }
 
-    const pnl = trade.profitLoss ?? 0
-    if (pnl > 0) {
-      winCount += 1
-      winSum += pnl
-    } else if (pnl < 0) {
-      lossCount += 1
-      lossSum += pnl
-    }
-
-    cumulative += pnl
-    cumulativePnLRaw.push(cumulative)
+    const first = Number.isNaN(firstTimestamp) ? Date.now() : firstTimestamp
+    const last = Number.isNaN(lastTimestamp) ? first + 60 * 60 * 1000 : lastTimestamp
+    const tradingHours = Math.max((last - first) / (1000 * 60 * 60), 1)
+    tradesPerHour = trades.length / tradingHours
+    maxHourlyTrades = Math.max(...hourlyActivity)
+    averageWin = winCount > 0 ? winSum / winCount : 0
+    averageLoss = lossCount > 0 ? Math.abs(lossSum / lossCount) : 0
+    cumulativePnL = evenlySample(cumulativePnLRaw, MAX_CUMULATIVE_POINTS)
   }
 
-  const first = Number.isNaN(firstTimestamp) ? Date.now() : firstTimestamp
-  const last = Number.isNaN(lastTimestamp) ? first + 60 * 60 * 1000 : lastTimestamp
-  const tradingHours = Math.max((last - first) / (1000 * 60 * 60), 1)
-  const tradesPerHour = trades.length / tradingHours
-  const maxHourlyTrades = Math.max(...hourlyActivity)
-  const winRate = trades.length > 0 ? (winCount / trades.length) * 100 : 0
-  const averageWin = winCount > 0 ? winSum / winCount : 0
-  const averageLoss = lossCount > 0 ? Math.abs(lossSum / lossCount) : 0
-  const cumulativePnL = evenlySample(cumulativePnLRaw, MAX_CUMULATIVE_POINTS)
-  const chartTrades = evenlySample(trades, MAX_RENDER_TRADES)
+  const winRate = (apiResponse.summary.win_rate ?? (trades.length > 0 ? (winCount / trades.length) * 100 : 0))
 
   // Determine primary trader type from highest scoring bias
   let primaryType: string = 'Calm Trader'
@@ -274,7 +306,7 @@ export function mapApiResponseToAnalysis(
     biases: {
       overtrading: {
         score: biasMap['overtrader'] ?? 0,
-        confidence: 85, // Using fixed confidence as API provides direct scores
+      confidence: 85,
         evidence: [`${tradesPerHour.toFixed(1)} trades/hour`, `${maxHourlyTrades} trades in busiest hour`],
       },
       lossAversion: {
@@ -325,7 +357,20 @@ export function mapApiResponseToAnalysis(
     chartData: {
       cumulativePnL,
       hourlyActivity,
+      pnlDistribution: payload?.pnl_distribution ?? {
+        min: 0,
+        max: 0,
+        buckets: new Array<number>(20).fill(0),
+      },
     },
+    heatmap: payload
+      ? {
+          oneHour: payload.heatmap.one_hour,
+          twoHour: payload.heatmap.two_hour,
+          fourHour: payload.heatmap.four_hour,
+          session: payload.heatmap.session,
+        }
+      : undefined,
     trades: chartTrades,
   }
 }
