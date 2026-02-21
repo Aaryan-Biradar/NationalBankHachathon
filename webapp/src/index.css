@@ -675,8 +675,7 @@ select {
   margin: 0.2rem 0 0.75rem;
 }
 
-.profile-line strong,
-.bias-card h3 {
+.profile-line strong {
   color: var(--accent-color);
 }
 
@@ -687,7 +686,36 @@ select {
 }
 
 .bias-card {
-  padding: 0.75rem;
+  padding: 0.85rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.bias-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--bias-accent, var(--accent-color));
+  border-radius: 11px 11px 0 0;
+}
+
+.bias-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(24, 28, 32, 0.1);
+}
+
+.bias-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.bias-icon {
+  font-size: 1.15rem;
 }
 
 .bias-card p,
@@ -706,44 +734,135 @@ select {
 }
 
 .bias-card h3 {
-  margin: 0.2rem 0;
-  font-size: 1.58rem;
+  margin: 0.25rem 0 0.4rem;
+  font-size: 1.6rem;
+  color: var(--bias-accent, var(--accent-color));
+}
+
+.bias-bar-track {
+  height: 6px;
+  background: var(--nb-surface);
+  border-radius: 3px;
+  margin-bottom: 0.4rem;
+  overflow: hidden;
+}
+
+.bias-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .bias-card ul,
 .recommendations ul {
   padding-left: 1rem;
   margin: 0.4rem 0 0;
+  font-size: 0.85rem;
 }
 
-.charts-grid,
+/* ── Graphical Insights ── */
+
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.85rem;
+}
+
+.chart-card {
+  padding: 1rem;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.chart-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(24, 28, 32, 0.08);
+}
+
+.chart-card h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  color: var(--ink-700);
+}
+
+.chart-wide {
+  grid-column: span 1;
+}
+
+.chart-narrow {
+  grid-column: span 1;
+}
+
+.chart-full {
+  grid-column: 1 / -1;
+}
+
+.chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Donut chart */
+.donut-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 0.5rem 0;
+}
+
+.donut-svg {
+  width: 140px;
+  height: 140px;
+}
+
+.donut-legend {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 0.5rem;
+  align-items: center;
+  font-size: 0.88rem;
+  color: var(--ink-700);
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legend-win {
+  background: #087A67;
+}
+
+.legend-loss {
+  background: #f0e0de;
+}
+
+/* Color helpers */
+.text-green {
+  color: #087A67;
+}
+
+.text-red {
+  color: #D93236;
+}
+
+.risk-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: var(--nb-surface);
+  color: var(--ink-700);
+  margin-top: 0.15rem;
+}
+
 .recommendations .two-column {
   display: grid;
   grid-template-columns: repeat(2, minmax(240px, 1fr));
   gap: 0.75rem;
-}
-
-.chart-card {
-  padding: 0.8rem;
-}
-
-.chart-card h3 {
-  margin: 0 0 0.55rem;
-}
-
-.sparkline {
-  width: 100%;
-  height: 170px;
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(225, 0, 26, 0.2), rgba(225, 0, 26, 0.02));
-}
-
-.sparkline polyline {
-  fill: none;
-  stroke: var(--accent-color);
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .heatmap-grid {
@@ -997,10 +1116,16 @@ select:focus-visible {
   .hero,
   .control-grid,
   .bias-grid,
-  .charts-grid,
+  .insights-grid,
   .recommendations .two-column,
   .metrics-row {
     grid-template-columns: 1fr;
+  }
+
+  .chart-wide,
+  .chart-narrow,
+  .chart-full {
+    grid-column: 1 / -1;
   }
 
   .layout,

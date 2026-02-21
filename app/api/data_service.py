@@ -111,8 +111,7 @@ def get_all_trades(session_id: str) -> list[TradeRecord]:
         raise HTTPException(status_code=404, detail="Session ID not found")
 
     try:
-        content = uploaded_files[session_id]
-        df = parse_csv_file(content)
+        df = uploaded_files[session_id]
         validate_required_columns(df)
 
         df = df.with_columns(

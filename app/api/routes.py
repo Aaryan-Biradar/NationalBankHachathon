@@ -80,7 +80,7 @@ async def upload_trade_history(file: UploadFile = File(...)):
             warnings=csv_summary.warnings,
         )
 
-        uploaded_files[session_id] = df.write_csv().encode("utf-8")
+        uploaded_files[session_id] = df
         csv_processing_summaries[session_id] = csv_processing_summary
         return UploadResponse(
             session_id=session_id,
@@ -142,8 +142,7 @@ async def get_performance_metrics(session_id: str):
         raise HTTPException(status_code=404, detail="Session ID not found")
 
     try:
-        content = uploaded_files[session_id]
-        df = parse_csv_file(content)
+        df = uploaded_files[session_id]
         validate_required_columns(df)
 
         metrics = calculate_performance_metrics(df)
@@ -178,8 +177,7 @@ async def what_if_simulation(session_id: str, request: WhatIfRequest):
         raise HTTPException(status_code=404, detail="Session ID not found")
 
     try:
-        content = uploaded_files[session_id]
-        df = parse_csv_file(content)
+        df = uploaded_files[session_id]
         validate_required_columns(df)
 
         exclude_criteria = request.exclude_criteria or ExcludeCriteria()
@@ -270,8 +268,7 @@ async def download_what_if_report(session_id: str, request: WhatIfDownloadReques
         raise HTTPException(status_code=404, detail="Session ID not found")
 
     try:
-        content = uploaded_files[session_id]
-        df = parse_csv_file(content)
+        df = uploaded_files[session_id]
         validate_required_columns(df)
 
         exclude_indices = identify_excluded_trades(df, request.exclude_criteria)
@@ -309,8 +306,7 @@ async def analyze_trading_history(session_id: str):
         raise HTTPException(status_code=404, detail="Session ID not found")
 
     try:
-        content = uploaded_files[session_id]
-        df = parse_csv_file(content)
+        df = uploaded_files[session_id]
         validate_required_columns(df)
 
         trader_type_analysis = predict_trader_type_analysis(df)
