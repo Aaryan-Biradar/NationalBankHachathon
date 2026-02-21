@@ -336,12 +336,9 @@ def _analyze_dataframe(
             if values["profit_loss"] is None:
                 set_recovered("profit_loss", expected_profit_loss)
             elif not (abs(values["profit_loss"] - expected_profit_loss) <= abs_tolerance):
-                previous_profit = values["profit_loss"]
-                values["profit_loss"] = expected_profit_loss
-                profit_loss_fixes += 1
                 warnings.append(
                     f"[WARN] {source_name} row {i}, column profit_loss: "
-                    f"{previous_profit} -> {expected_profit_loss}"
+                    f"{values['profit_loss']} != expected {expected_profit_loss}; kept source value"
                 )
 
         if i > 0 and previous_balance is not None and values["profit_loss"] is not None:
