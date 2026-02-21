@@ -2,13 +2,24 @@ import type { AnalysisResult, Trade } from '../types'
 
 const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.toString().trim()
 
-const API_BASE_URL = (
+export const API_BASE_URL = (
   !rawApiBaseUrl
     ? 'http://localhost:8000'
     : /^\d+$/.test(rawApiBaseUrl)
       ? `http://localhost:${rawApiBaseUrl}`
       : rawApiBaseUrl
 ).replace(/\/+$/, '')
+
+async function readErrorDetails(response: Response): Promise<string> {
+  const text = (await response.text()).trim()
+  if (!text) return response.statusText
+  try {
+    const parsed = JSON.parse(text) as { detail?: string }
+    return parsed.detail ?? text
+  } catch {
+    return text
+  }
+}
 
 interface UploadResponse {
   session_id: string
@@ -43,7 +54,8 @@ export async function uploadTradingHistory(file: File): Promise<string> {
   })
 
   if (!response.ok) {
-    throw new Error(`Upload failed: ${response.statusText}`)
+    const detail = await readErrorDetails(response)
+    throw new Error(`Upload failed (${response.status}): ${detail}`)
   }
 
   const data: UploadResponse = await response.json()
@@ -54,7 +66,8 @@ export async function analyzeTrading(sessionId: string): Promise<ApiAnalysisResp
   const response = await fetch(`${API_BASE_URL}/analyze/${sessionId}`)
 
   if (!response.ok) {
-    throw new Error(`Analysis failed: ${response.statusText}`)
+    const detail = await readErrorDetails(response)
+    throw new Error(`Analysis failed (${response.status}): ${detail}`)
   }
 
   return response.json()
@@ -64,7 +77,8 @@ export async function getTrades(sessionId: string): Promise<Trade[]> {
   const response = await fetch(`${API_BASE_URL}/data/${sessionId}`)
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch trades: ${response.statusText}`)
+    const detail = await readErrorDetails(response)
+    throw new Error(`Failed to fetch trades (${response.status}): ${detail}`)
   }
 
   const data = await response.json()

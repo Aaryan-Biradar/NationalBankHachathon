@@ -39,6 +39,35 @@ BIAS_DESCRIPTIONS = {
     "revenge_trader": "Increased activity and risk after losses, indicating emotional decisions",
 }
 
+FALLBACK_FEATURE_COLUMNS = [
+    "quantity",
+    "side_encoded",
+    "profit_loss_actual",
+    "is_profit",
+    "loss_amount",
+    "price_range",
+    "price_range_pct",
+    "trade_value",
+    "win_rate_20",
+    "avg_qty_20",
+    "qty_volatility_20",
+    "qty_max_20",
+    "avg_profit_20",
+    "profit_std_20",
+    "max_drawdown_20",
+    "buy_ratio_20",
+    "win_rate_50",
+    "avg_qty_50",
+    "qty_volatility_50",
+    "qty_max_50",
+    "avg_profit_50",
+    "profit_std_50",
+    "max_drawdown_50",
+    "buy_ratio_50",
+    "early_close_indicator",
+    "qty_after_loss",
+]
+
 
 def detect_overtrading(df: pl.DataFrame) -> TraderAnalysis:
     return predict_trader_type_analysis(df)
@@ -87,6 +116,10 @@ def predict_trader_type_analysis(df: pl.DataFrame) -> TraderAnalysis:
             .str.strptime(pl.Datetime, strict=False)
             .alias("timestamp")
         ).sort("timestamp")
+
+        work_df = work_df.with_columns(
+            pl.col("side").cast(pl.Utf8).str.to_uppercase().alias("side")
+        )
 
         work_df = work_df.with_columns(
             [
@@ -191,11 +224,19 @@ def predict_trader_type_analysis(df: pl.DataFrame) -> TraderAnalysis:
             ]
         )
 
-        features = [
-            col
-            for col in work_df.columns
-            if col not in ["timestamp", "asset", "side", "profit_loss", "exit_price", "entry_price"]
-        ]
+        model_features = getattr(state.model, "feature_names", None)
+        features = (
+            [str(col) for col in model_features]
+            if model_features
+            else list(FALLBACK_FEATURE_COLUMNS)
+        )
+
+        missing_features = [feature for feature in features if feature not in work_df.columns]
+        if missing_features:
+            work_df = work_df.with_columns(
+                [pl.lit(0.0).alias(feature) for feature in missing_features]
+            )
+
         features_matrix = (
             work_df.select(features)
             .with_columns(pl.all().cast(pl.Float64, strict=False))
@@ -204,10 +245,25 @@ def predict_trader_type_analysis(df: pl.DataFrame) -> TraderAnalysis:
         )
         features_matrix = np.nan_to_num(features_matrix, nan=0.0, posinf=0.0, neginf=0.0)
 
-        dmatrix = xgb.DMatrix(features_matrix)
+        dmatrix = xgb.DMatrix(features_matrix, feature_names=features)
         probabilities = state.model.predict(dmatrix)
         if probabilities.ndim == 1:
-            probabilities = probabilities.reshape(-1, 1)
+            if probabilities.size == work_df.height and np.all(np.equal(probabilities % 1, 0)):
+                class_predictions = probabilities.astype(int)
+                probability_matrix = np.zeros((work_df.height, len(state.TRADER_TYPES)))
+                valid = (class_predictions >= 0) & (class_predictions < len(state.TRADER_TYPES))
+                probability_matrix[np.arange(work_df.height)[valid], class_predictions[valid]] = 1.0
+                probabilities = probability_matrix
+            else:
+                probabilities = probabilities.reshape(-1, 1)
+
+        if probabilities.shape[1] < len(state.TRADER_TYPES):
+            padded = np.zeros((probabilities.shape[0], len(state.TRADER_TYPES)))
+            padded[:, : probabilities.shape[1]] = probabilities
+            probabilities = padded
+        elif probabilities.shape[1] > len(state.TRADER_TYPES):
+            probabilities = probabilities[:, : len(state.TRADER_TYPES)]
+
         predictions = np.argmax(probabilities, axis=1)
 
         avg_probabilities = probabilities.mean(axis=0)

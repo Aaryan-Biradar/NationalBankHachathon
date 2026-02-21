@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import './index.css'
 import AnalysisPage from './AnalysisPage'
-import { analyzeTrading, getTrades, mapApiResponseToAnalysis, uploadTradingHistory } from './lib/api'
+import { API_BASE_URL, analyzeTrading, getTrades, mapApiResponseToAnalysis, uploadTradingHistory } from './lib/api'
 import type { AnalysisResult, SessionHistoryItem, Trade, TraderType } from './types'
 
 const HISTORY_KEY = 'nb-bias-detector-history-v1'
@@ -63,7 +63,7 @@ function App() {
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to analyze trades'
-      setParseIssues([`API Error: ${errorMessage}. Make sure the backend server is running on localhost:8000`])
+      setParseIssues([`API Error: ${errorMessage}. Backend URL: ${API_BASE_URL}`])
       setTrades([])
       setAnalysis(null)
     } finally {

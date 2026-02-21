@@ -233,6 +233,7 @@ def _analyze_dataframe(
 
     empty_cells = sum(not v.strip() for row in raw_rows for v in row.values())
     error_message: str | None = None
+    dropped_row_indices: list[int] = []
 
     for i in range(df.height):
         raw_row = raw_rows[i]
@@ -368,11 +369,12 @@ def _analyze_dataframe(
 
         unresolved_column = next((c for c in NUMERIC_COLUMNS if values[c] is None), None)
         if unresolved_column is not None:
-            error_message = (
-                f"[ERROR] {source_name} row {i}, column {unresolved_column}: "
-                "could not recover value from available fields; halting this file"
+            warnings.append(
+                f"[WARN] {source_name} row {i}, column {unresolved_column}: "
+                "could not recover value from available fields; dropping row"
             )
-            break
+            dropped_row_indices.append(i)
+            continue
 
         corrected_quantity[i] = values["quantity"]
         corrected_entry_price[i] = values["entry_price"]
@@ -388,6 +390,22 @@ def _analyze_dataframe(
         corrected_profit_loss,
         corrected_balance,
     )
+
+    if dropped_row_indices:
+        corrected_df = (
+            corrected_df.with_row_index("_row_idx")
+            .filter(~pl.col("_row_idx").is_in(dropped_row_indices))
+            .drop("_row_idx")
+        )
+        warnings.append(
+            f"[WARN] {source_name}: dropped {len(dropped_row_indices)} row(s) due to unrecoverable values"
+        )
+
+    if corrected_df.height == 0:
+        error_message = (
+            f"[ERROR] {source_name}: all rows were invalid after sanitization; unable to continue"
+        )
+
     summary = CsvAnalysisSummary(
         source_name=source_name,
         empty_cells=empty_cells,
