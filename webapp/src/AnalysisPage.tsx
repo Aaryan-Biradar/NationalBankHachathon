@@ -269,6 +269,41 @@ const PnLDistribution = memo(function PnLDistribution({ trades }: { trades: Anal
     )
 })
 
+const QualitySummaryCard = memo(function QualitySummaryCard({ analysis }: { analysis: AnalysisResult }) {
+    const { t } = useI18n()
+    const errors = analysis.qualitySummary?.errors ?? 0
+    const warnings = analysis.qualitySummary?.warnings ?? 0
+    const info = analysis.qualitySummary?.info ?? 0
+    const notes = analysis.qualityIssues ?? []
+
+    return (
+        <article className="chart-card chart-narrow quality-card">
+            <h3>{t('analysis.dataQuality')}</h3>
+            <div className="quality-grid">
+                <div className="quality-item quality-errors">
+                    <strong>{errors}</strong>
+                    <span>{t('analysis.qualityErrors')}</span>
+                </div>
+                <div className="quality-item quality-warnings">
+                    <strong>{warnings}</strong>
+                    <span>{t('analysis.qualityWarnings')}</span>
+                </div>
+                <div className="quality-item quality-info">
+                    <strong>{info}</strong>
+                    <span>{t('analysis.qualityInfo')}</span>
+                </div>
+            </div>
+            {notes.length > 0 && (
+                <ul className="quality-notes">
+                    {notes.slice(0, 3).map((note) => (
+                        <li key={note}>{note}</li>
+                    ))}
+                </ul>
+            )}
+        </article>
+    )
+})
+
 export default function AnalysisPage({ analysis, history, onBack, onSave, onLoadHistory }: AnalysisPageProps) {
     const { t, formatDateTime } = useI18n()
     const totalPnL = analysis.metrics.totalProfitLoss
@@ -373,6 +408,8 @@ export default function AnalysisPage({ analysis, history, onBack, onSave, onLoad
                             <h3>🕐 {t('analysis.hourlyActivity')}</h3>
                             <HourlyActivityChart data={analysis.chartData.hourlyActivity} />
                         </article>
+
+                        <QualitySummaryCard analysis={analysis} />
 
                         <article className="chart-card chart-full">
                             <h3>🏆 {t('analysis.winLossRatio')}</h3>

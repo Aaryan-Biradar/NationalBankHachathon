@@ -796,6 +796,50 @@ select {
   grid-column: 1 / -1;
 }
 
+.quality-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.quality-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.quality-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.55rem 0.5rem;
+  text-align: center;
+  background: var(--nb-surface);
+}
+
+.quality-item strong {
+  display: block;
+  font-size: 1.1rem;
+  color: var(--ink-900);
+}
+
+.quality-item span {
+  font-size: 0.72rem;
+  color: var(--ink-600);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.quality-errors strong { color: #b91c1c; }
+.quality-warnings strong { color: #a16207; }
+.quality-info strong { color: #0369a1; }
+
+.quality-notes {
+  margin: 0;
+  padding-left: 1rem;
+  font-size: 0.8rem;
+  color: var(--ink-700);
+}
+
 .chart-svg {
   width: 100%;
   height: auto;

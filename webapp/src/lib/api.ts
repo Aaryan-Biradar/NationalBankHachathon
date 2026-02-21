@@ -33,6 +33,35 @@ interface ApiAnalysisResponse {
     win_rate: number
     total_profit_loss: number
     primary_trader_type?: string
+    errors?: number
+    warnings?: number
+    info?: number
+    error_count?: number
+    warning_count?: number
+    info_count?: number
+  }
+  quality?: {
+    errors?: number | unknown[]
+    warnings?: number | unknown[]
+    info?: number | unknown[]
+  }
+  data_quality?: {
+    errors?: number | unknown[]
+    warnings?: number | unknown[]
+    info?: number | unknown[]
+    issues?: string[]
+    notes?: string[]
+  }
+  csv_summary?: {
+    status?: string
+    source_name?: string
+    empty_cells?: number
+    quantity_fills?: number
+    entry_fills?: number
+    exit_fills?: number
+    profit_fixes?: number
+    balance_fixes?: number
+    warnings?: string[]
   }
 }
 
@@ -194,6 +223,53 @@ export function mapApiResponseToAnalysis(
     riskLabel = 'Aggressive'
   }
 
+  const toCount = (value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value
+    if (Array.isArray(value)) return value.length
+    return null
+  }
+
+  const qualityErrors =
+    toCount(apiResponse.csv_summary?.empty_cells) ??
+    toCount(apiResponse.data_quality?.errors) ??
+    toCount(apiResponse.quality?.errors) ??
+    toCount(apiResponse.summary.errors) ??
+    toCount(apiResponse.summary.error_count) ??
+    0
+
+  const csvWarningsCount = Array.isArray(apiResponse.csv_summary?.warnings)
+    ? apiResponse.csv_summary.warnings.length
+    : null
+
+  const qualityWarnings =
+    toCount(csvWarningsCount) ??
+    toCount(apiResponse.data_quality?.warnings) ??
+    toCount(apiResponse.quality?.warnings) ??
+    toCount(apiResponse.summary.warnings) ??
+    toCount(apiResponse.summary.warning_count) ??
+    0
+
+  const csvFixesCount =
+    (apiResponse.csv_summary?.quantity_fills ?? 0) +
+    (apiResponse.csv_summary?.entry_fills ?? 0) +
+    (apiResponse.csv_summary?.exit_fills ?? 0) +
+    (apiResponse.csv_summary?.profit_fixes ?? 0) +
+    (apiResponse.csv_summary?.balance_fixes ?? 0)
+
+  const qualityInfo =
+    toCount(csvFixesCount) ??
+    toCount(apiResponse.data_quality?.info) ??
+    toCount(apiResponse.quality?.info) ??
+    toCount(apiResponse.summary.info) ??
+    toCount(apiResponse.summary.info_count) ??
+    0
+
+  const qualityIssues = [
+    ...(apiResponse.csv_summary?.warnings ?? []),
+    ...(apiResponse.data_quality?.issues ?? []),
+    ...(apiResponse.data_quality?.notes ?? []),
+  ]
+
   return {
     biases: {
       overtrading: {
@@ -223,7 +299,12 @@ export function mapApiResponseToAnalysis(
       'High risk behavior detected - consider reducing position sizes',
       'Multiple bias patterns present - review your trading plan',
     ] : [],
-    qualityIssues: [],
+    qualityIssues,
+    qualitySummary: {
+      errors: qualityErrors,
+      warnings: qualityWarnings,
+      info: qualityInfo,
+    },
     riskProfile: {
       score: riskScore,
       label: riskLabel,

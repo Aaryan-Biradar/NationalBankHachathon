@@ -40,6 +40,11 @@ export interface AnalysisResult {
   recommendations: string[]
   predictiveAlerts: string[]
   qualityIssues: string[]
+  qualitySummary?: {
+    errors: number
+    warnings: number
+    info: number
+  }
   riskProfile: RiskProfile
   portfolioSuggestion: string
   metrics: {
