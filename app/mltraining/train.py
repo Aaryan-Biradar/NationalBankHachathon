@@ -61,8 +61,8 @@ df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
 print("⚙️  Engineering behavioral features...")
 
 # === BASIC FEATURES (computed once for all) ===
-df['hour'] = df['timestamp'].dt.hour
-df['day'] = df['timestamp'].dt.day
+# df['hour'] = df['timestamp'].dt.hour
+# df['day'] = df['timestamp'].dt.day
 df['side_encoded'] = (df['side'] == 'BUY').astype(int)
 df['profit_loss_actual'] = df['profit_loss']
 df['is_profit'] = (df['profit_loss'] > 0).astype(int)
@@ -81,7 +81,7 @@ for trader_type in [0, 1, 2, 3]:
     trader_df = df.loc[trader_indices].sort_values('timestamp').reset_index(drop=True)
     
     # === WINDOWED BEHAVIORAL PATTERNS ===
-    window_sizes = [5, 10, 20, 50]
+    window_sizes = [20, 50]
     
     for window in window_sizes:
         # Win rate in window
@@ -135,10 +135,6 @@ for trader_type in [0, 1, 2, 3]:
         else:
             qty_after_loss.append(0.0)
     df.loc[trader_indices, 'qty_after_loss'] = qty_after_loss
-    
-    # === OVERTRADING INDICATORS ===
-    time_between = trader_df['timestamp'].diff().dt.total_seconds().fillna(0).values
-    df.loc[trader_indices, 'time_between_trades'] = time_between
 
 print("✓ Features engineered")
 

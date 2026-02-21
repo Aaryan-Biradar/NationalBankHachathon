@@ -39,16 +39,16 @@ def predict_trader_type(csv_file):
     # Drop rows with missing critical columns
     df = df.dropna(subset=['quantity', 'side', 'timestamp', 'entry_price', 'exit_price'])
     
-    if df['balance'].any():
-        df = df.drop('balance', axis=1, errors='ignore')
+    # Remove balance column if it exists
+    if 'balance' in df.columns:
+        df = df.drop('balance', axis=1)
     
     # Sort by timestamp for sequential features
     df = df.sort_values('timestamp').reset_index(drop=True)
     
     # === BASIC FEATURES ===
-    df['hour'] = df['timestamp'].dt.hour
-    df['day'] = df['timestamp'].dt.day
     df['side_encoded'] = (df['side'] == 'BUY').astype(int)
+    df['profit_loss_actual'] = df['profit_loss']
     df['is_profit'] = (df['profit_loss'] > 0).astype(int)
     df['loss_amount'] = df['profit_loss'].apply(lambda x: abs(x) if x < 0 else 0)
     
@@ -57,7 +57,7 @@ def predict_trader_type(csv_file):
     df['trade_value'] = df['quantity'] * df['entry_price']
     
     # === WINDOWED BEHAVIORAL PATTERNS ===
-    window_sizes = [5, 10, 20, 50]
+    window_sizes = [20, 50]
     
     for window in window_sizes:
         df[f'win_rate_{window}'] = df['is_profit'].rolling(window, min_periods=1).mean().fillna(0.5)
@@ -95,9 +95,6 @@ def predict_trader_type(csv_file):
             qty_after_loss.append(0.0)
     df['qty_after_loss'] = qty_after_loss
     
-    # === OVERTRADING INDICATORS ===
-    time_between = df['timestamp'].diff().dt.total_seconds().fillna(0).values
-    df['time_between_trades'] = time_between
     
     # Select features (must match training features)
     features = [col for col in df.columns if col not in 

@@ -217,12 +217,10 @@ def predict_trader_type_analysis(df: pd.DataFrame) -> dict:
         df = df.sort_values('timestamp').reset_index(drop=True)
         
         # ============================================================================
-        # FEATURE ENGINEERING - Same as train_v2.py
+        # FEATURE ENGINEERING - Same as test.py
         # ============================================================================
         
         # === BASIC FEATURES ===
-        df['hour'] = df['timestamp'].dt.hour
-        df['day'] = df['timestamp'].dt.day
         df['side_encoded'] = (df['side'] == 'BUY').astype(int)
         df['profit_loss_actual'] = df['profit_loss']
         df['is_profit'] = (df['profit_loss'] > 0).astype(int)
@@ -233,11 +231,10 @@ def predict_trader_type_analysis(df: pd.DataFrame) -> dict:
         df['trade_value'] = df['quantity'] * df['entry_price']
         
         # === WINDOWED BEHAVIORAL PATTERNS ===
-        window_sizes = [5, 10, 20, 50]
+        window_sizes = [20, 50]
         
         for window in window_sizes:
             df[f'win_rate_{window}'] = df['is_profit'].rolling(window, min_periods=1).mean().fillna(0.5)
-            
             df[f'avg_qty_{window}'] = df['quantity'].rolling(window, min_periods=1).mean().fillna(df['quantity'].mean())
             df[f'qty_volatility_{window}'] = df['quantity'].rolling(window, min_periods=1).std().fillna(0)
             df[f'qty_max_{window}'] = df['quantity'].rolling(window, min_periods=1).max().fillna(0)
@@ -271,10 +268,6 @@ def predict_trader_type_analysis(df: pd.DataFrame) -> dict:
             else:
                 qty_after_loss.append(0.0)
         df['qty_after_loss'] = qty_after_loss
-        
-        # === OVERTRADING INDICATORS ===
-        time_between = df['timestamp'].diff().dt.total_seconds().fillna(0).values
-        df['time_between_trades'] = time_between
         
         # ============================================================================
         # PREPARE FEATURES FOR PREDICTION
