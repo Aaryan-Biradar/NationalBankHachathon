@@ -114,6 +114,14 @@ const messages = {
     'mapper.field.exitPrice': 'Exit Price',
     'mapper.field.profitLoss': 'Profit / Loss',
     'mapper.field.balance': 'Account Balance',
+    'evidence.tradesPerHour': '{value} trades/hour',
+    'evidence.busiestHour': '{value} trades in busiest hour',
+    'evidence.winRate': 'Win rate: {value}%',
+    'evidence.avgWinLoss': 'Avg win: ${win} vs avg loss: ${loss}',
+    'evidence.pattern': 'Pattern analysis from ML model',
+    'evidence.riskAfterLoss': 'Risk behavior after losses detected',
+    'evidence.disciplined': 'Disciplined trading pattern',
+    'evidence.consistentRisk': 'Consistent risk management',
   },
   fr: {
     'app.skipToContent': 'Passer au contenu principal',
@@ -224,6 +232,14 @@ const messages = {
     'mapper.field.exitPrice': 'Prix de sortie',
     'mapper.field.profitLoss': 'Profit / Perte',
     'mapper.field.balance': 'Solde du compte',
+    'evidence.tradesPerHour': '{value} transactions/heure',
+    'evidence.busiestHour': '{value} transactions pendant l\'heure la plus active',
+    'evidence.winRate': 'Taux de reussite : {value}%',
+    'evidence.avgWinLoss': 'Gain moyen : ${win} vs perte moyenne : ${loss}',
+    'evidence.pattern': 'Analyse des motifs issue du modele ML',
+    'evidence.riskAfterLoss': 'Comportement a risque detecte apres des pertes',
+    'evidence.disciplined': 'Schema de trading discipline',
+    'evidence.consistentRisk': 'Gestion du risque coherente',
   },
 } as const
 
@@ -308,4 +324,25 @@ export function getBiasLabel(key: string, t: I18nContextValue['t']) {
   if (key === 'overtrading') return t('bias.overtrading')
   if (key === 'revengeTrading') return t('bias.revengeTrading')
   return key
+}
+
+export function translateEvidenceLine(line: string, t: I18nContextValue['t']) {
+  const tradesPerHour = line.match(/^([\d.]+) trades\/hour$/)
+  if (tradesPerHour) return t('evidence.tradesPerHour', { value: tradesPerHour[1] })
+
+  const busiestHour = line.match(/^(\d+) trades in busiest hour$/)
+  if (busiestHour) return t('evidence.busiestHour', { value: busiestHour[1] })
+
+  const winRate = line.match(/^Win rate: ([\d.]+)%$/)
+  if (winRate) return t('evidence.winRate', { value: winRate[1] })
+
+  const avgWinLoss = line.match(/^Avg win: \$([\d.]+) vs avg loss: \$([\d.]+)$/)
+  if (avgWinLoss) return t('evidence.avgWinLoss', { win: avgWinLoss[1], loss: avgWinLoss[2] })
+
+  if (line === 'Pattern analysis from ML model') return t('evidence.pattern')
+  if (line === 'Risk behavior after losses detected') return t('evidence.riskAfterLoss')
+  if (line === 'Disciplined trading pattern') return t('evidence.disciplined')
+  if (line === 'Consistent risk management') return t('evidence.consistentRisk')
+
+  return line
 }

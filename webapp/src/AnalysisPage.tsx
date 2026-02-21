@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react'
 import type { AnalysisResult, BiasKey, SessionHistoryItem } from './types'
-import { getBiasLabel, getRiskLabel, getTraderTypeLabel, useI18n } from './i18n'
+import { getBiasLabel, getRiskLabel, getTraderTypeLabel, translateEvidenceLine, useI18n } from './i18n'
 
 const round = (value: number) => Math.round(value * 100) / 100
 const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(n % 1 === 0 ? 0 : 2)
@@ -343,7 +343,7 @@ export default function AnalysisPage({ analysis, history, onBack, onSave, onLoad
                                     <small>{t('analysis.confidence', { value: round(bias.confidence) })}</small>
                                     <ul>
                                         {bias.evidence.slice(0, 2).map((line) => (
-                                            <li key={line}>{line}</li>
+                                            <li key={line}>{translateEvidenceLine(line, t)}</li>
                                         ))}
                                     </ul>
                                 </article>
