@@ -2,12 +2,15 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 import pandas as pd
+import numpy as np
 import uuid
 from typing import List, Dict, Any, Optional
 import io
 from datetime import datetime, date
 from pydantic import BaseModel
 import json
+import xgboost as xgb
+import os
 
 app = FastAPI(title="National Bank Bias Detector API", version="1.0.0")
 
@@ -20,9 +23,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Trader type mapping
+TRADER_TYPES = {
+    0: 'calm_trader',
+    1: 'loss_averse_trader',
+    2: 'overtrader',
+    3: 'revenge_trader'
+}
+
 # In-memory storage for demo purposes
 uploaded_files = {}
 analysis_results = {}
+model = None
+
+def load_model():
+    """Load the trained XGBoost model"""
+    global model
+    try:
+        model_path = os.path.join(os.path.dirname(__file__), '../mltraining/trader_classifier.json')
+        if os.path.exists(model_path):
+            model = xgb.XGBClassifier()
+            model.load_model(model_path)
+            print("✓ Model loaded successfully")
+        else:
+            print(f"⚠ Model not found at {model_path}")
+    except Exception as e:
+        print(f"Error loading model: {e}")
 
 # Pydantic models
 class UploadResponse(BaseModel):
@@ -150,83 +176,182 @@ def validate_required_columns(df: pd.DataFrame) -> bool:
     return True
 
 def detect_overtrading(df: pd.DataFrame) -> dict:
-    """Detect overtrading bias"""
-    # Simple logic: more than 5 trades per day on average
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    trades_per_day = df.groupby(df['timestamp'].dt.date).size()
-    avg_trades_per_day = trades_per_day.mean()
+    """Detect overtrading bias using ML model"""
+    return predict_trader_type_analysis(df)
 
-    is_overtrading = avg_trades_per_day > 5
-
-    return {
-        "type": "Overtrading",
-        "confidence_score": min(avg_trades_per_day / 10, 1.0) if is_overtrading else 0.0,
-        "description": f"You're averaging {avg_trades_per_day:.1f} trades per day." if is_overtrading else "Trading frequency appears normal.",
-        "recommendations": [
-            "Set daily trade limit of 3-5 trades",
-            "Implement a cooling-off period between trades",
-            "Review transaction costs impact on profitability"
-        ] if is_overtrading else []
-    }
-
-def detect_loss_aversion(df: pd.DataFrame) -> dict:
-    """Detect loss aversion bias"""
-    winning_trades = df[df['profit_loss'] > 0]
-    losing_trades = df[df['profit_loss'] < 0]
-
-    if len(winning_trades) == 0 or len(losing_trades) == 0:
+def predict_trader_type_analysis(df: pd.DataFrame) -> dict:
+    """
+    Use the trained XGBoost model to predict trader type and return analysis.
+    Uses the improved v2 feature set (97.62% accuracy model) matching train_v2.py
+    """
+    if model is None or len(df) == 0:
         return {
-            "type": "Loss Aversion",
+            "type": "Trader Type Prediction",
             "confidence_score": 0.0,
-            "description": "Insufficient data to determine loss aversion pattern.",
+            "description": "Unable to make prediction - model not loaded or insufficient data.",
+            "recommendations": []
+        }
+    
+    try:
+        # Data cleaning - same as train_v2.py
+        df = df.copy()
+        initial_rows = len(df)
+        
+        # Handle missing profit_loss
+        if df['profit_loss'].isna().any():
+            df.loc[df['profit_loss'].isna(), 'profit_loss'] = (
+                df.loc[df['profit_loss'].isna(), 'exit_price'] - 
+                df.loc[df['profit_loss'].isna(), 'entry_price']
+            )
+        
+        # Drop rows with missing critical columns
+        critical_cols = ['quantity', 'side', 'timestamp', 'entry_price', 'exit_price']
+        df = df.dropna(subset=critical_cols)
+        
+        # Drop balance column if exists
+        if 'balance' in df.columns:
+            df = df.drop('balance', axis=1)
+        
+        # Convert timestamp
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        df = df.sort_values('timestamp').reset_index(drop=True)
+        
+        # ============================================================================
+        # FEATURE ENGINEERING - Same as train_v2.py
+        # ============================================================================
+        
+        # === BASIC FEATURES ===
+        df['hour'] = df['timestamp'].dt.hour
+        df['day'] = df['timestamp'].dt.day
+        df['side_encoded'] = (df['side'] == 'BUY').astype(int)
+        df['profit_loss_actual'] = df['profit_loss']
+        df['is_profit'] = (df['profit_loss'] > 0).astype(int)
+        df['loss_amount'] = df['profit_loss'].apply(lambda x: abs(x) if x < 0 else 0)
+        
+        df['price_range'] = df['exit_price'] - df['entry_price']
+        df['price_range_pct'] = (df['price_range'] / (df['entry_price'].abs() + 1e-6)) * 100
+        df['trade_value'] = df['quantity'] * df['entry_price']
+        
+        # === WINDOWED BEHAVIORAL PATTERNS ===
+        window_sizes = [5, 10, 20, 50]
+        
+        for window in window_sizes:
+            df[f'win_rate_{window}'] = df['is_profit'].rolling(window, min_periods=1).mean().fillna(0.5)
+            
+            df[f'avg_qty_{window}'] = df['quantity'].rolling(window, min_periods=1).mean().fillna(df['quantity'].mean())
+            df[f'qty_volatility_{window}'] = df['quantity'].rolling(window, min_periods=1).std().fillna(0)
+            df[f'qty_max_{window}'] = df['quantity'].rolling(window, min_periods=1).max().fillna(0)
+            
+            df[f'avg_profit_{window}'] = df['profit_loss'].rolling(window, min_periods=1).mean().fillna(0)
+            df[f'profit_std_{window}'] = df['profit_loss'].rolling(window, min_periods=1).std().fillna(0)
+            df[f'max_drawdown_{window}'] = df['profit_loss'].rolling(window, min_periods=1).min().fillna(0)
+            
+            df[f'buy_ratio_{window}'] = df['side_encoded'].rolling(window, min_periods=1).mean().fillna(0.5)
+        
+        # === LOSS AVERSION INDICATORS ===
+        early_close = []
+        for idx in range(len(df)):
+            if idx > 0:
+                prev_profit = df.loc[idx-1, 'profit_loss']
+                curr_profit = df.loc[idx, 'profit_loss']
+                if prev_profit > 0 and curr_profit > prev_profit:
+                    early_close.append(1)
+                else:
+                    early_close.append(0)
+            else:
+                early_close.append(0)
+        df['early_close_indicator'] = early_close
+        
+        # === REVENGE TRADING INDICATORS ===
+        qty_after_loss = []
+        for idx in range(len(df)):
+            if idx > 0 and df.loc[idx-1, 'profit_loss'] < 0:
+                qty_ratio = df.loc[idx, 'quantity'] / (df.loc[idx-1, 'quantity'] + 1e-6)
+                qty_after_loss.append(qty_ratio)
+            else:
+                qty_after_loss.append(0.0)
+        df['qty_after_loss'] = qty_after_loss
+        
+        # === OVERTRADING INDICATORS ===
+        time_between = df['timestamp'].diff().dt.total_seconds().fillna(0).values
+        df['time_between_trades'] = time_between
+        
+        # ============================================================================
+        # PREPARE FEATURES FOR PREDICTION
+        # ============================================================================
+        
+        # Select features (must match training features)
+        features = [col for col in df.columns if col not in 
+                    ['timestamp', 'asset', 'side', 'profit_loss', 'exit_price', 'entry_price']]
+        
+        X = df[features].fillna(0).replace([np.inf, -np.inf], 0)
+        
+        # Make predictions
+        predictions = model.predict(X)
+        probabilities = model.predict_proba(X)
+        
+        # Get most common trader type
+        unique, counts = np.unique(predictions, return_counts=True)
+        most_common_idx = unique[np.argmax(counts)]
+        most_common_type = TRADER_TYPES[most_common_idx]
+        confidence = np.max(probabilities, axis=1).mean()
+        
+        # Generate recommendations based on trader type
+        recommendations_map = {
+            'calm_trader': [
+                "You show disciplined trading patterns - maintain your consistent approach",
+                "Your risk management is solid - continue with current position sizing",
+                "Focus on optimizing entry/exit timing for better profit capture"
+            ],
+            'loss_averse_trader': [
+                "You tend to close winning positions too quickly while holding losses",
+                "Implement fixed take-profit levels to let winners run",
+                "Use stop-loss orders to systematically manage losing trades",
+                "Keep detailed trade journal to identify emotional decision patterns"
+            ],
+            'overtrader': [
+                "You're trading too frequently - set daily/weekly trade limits",
+                "Implement a cooling-off period between trades to reduce impulsivity",
+                "Review transaction costs - they're eating into your profits",
+                "Quality over quantity: focus on high-conviction setups only"
+            ],
+            'revenge_trader': [
+                "You show signs of revenge trading after losses - take breaks",
+                "Implement a mandatory cooling-off period after consecutive losses",
+                "Practice mindfulness and emotional regulation before trading",
+                "Use automation to enforce pre-planned risk management rules"
+            ]
+        }
+        
+        trader_type_description = {
+            'calm_trader': 'You maintain disciplined and consistent trading patterns with good emotional control',
+            'loss_averse_trader': 'You tend to close winning trades quickly but hold losing positions longer',
+            'overtrader': 'You trade frequently, potentially due to over-confidence or lack of discipline',
+            'revenge_trader': 'Your trading shows increased activity and risk after losses, indicating emotional decisions'
+        }
+        
+        return {
+            "type": f"Trader Type: {most_common_type.replace('_', ' ').title()}",
+            "confidence_score": float(confidence),
+            "description": trader_type_description.get(most_common_type, "Unknown trader type pattern detected"),
+            "recommendations": recommendations_map.get(most_common_type, [])
+        }
+        
+    except Exception as e:
+        return {
+            "type": "Trader Type Prediction",
+            "confidence_score": 0.0,
+            "description": f"Error during prediction: {str(e)}",
             "recommendations": []
         }
 
-    # Check if winners are closed too quickly vs losers held too long
-    avg_win_duration = (winning_trades['exit_price'] - winning_trades['entry_price']).mean()
-    avg_loss_duration = (losing_trades['exit_price'] - losing_trades['entry_price']).mean()
-
-    is_loss_averse = avg_win_duration < abs(avg_loss_duration * 0.5)
-
-    return {
-        "type": "Loss Aversion",
-        "confidence_score": 0.7 if is_loss_averse else 0.3,
-        "description": "Prematurely closing winning trades while holding losing positions longer." if is_loss_averse else "Loss aversion pattern not strongly detected.",
-        "recommendations": [
-            "Use systematic take-profit levels",
-            "Set stop-loss orders to limit downside",
-            "Keep detailed trade journal to track emotional decisions"
-        ] if is_loss_averse else []
-    }
+def detect_loss_aversion(df: pd.DataFrame) -> dict:
+    analysis = predict_trader_type_analysis(df)
+    return analysis
 
 def detect_revenge_trading(df: pd.DataFrame) -> dict:
-    """Detect revenge trading bias"""
-    df_sorted = df.sort_values('timestamp')
-    df_sorted['prev_profit_loss'] = df_sorted['profit_loss'].shift(1)
-    df_sorted['profit_loss_diff'] = df_sorted['profit_loss'] - df_sorted['prev_profit_loss']
-    
-    # Look for pattern: loss followed by larger trade
-    revenge_patterns = df_sorted[
-        (df_sorted['prev_profit_loss'] < 0) & 
-        (df_sorted['quantity'] > df_sorted['quantity'].shift(1) * 1.5)
-    ]
-    
-    revenge_count = len(revenge_patterns)
-    total_trades = len(df)
-    revenge_ratio = revenge_count / total_trades if total_trades > 0 else 0
-    
-    is_revenge_trading = revenge_ratio > 0.1  # More than 10% of trades show revenge pattern
-    
-    return {
-        "type": "Revenge Trading",
-        "confidence_score": min(revenge_ratio * 10, 1.0),
-        "description": f"{revenge_count} instances of potentially revenge trading detected." if revenge_count > 0 else "No clear revenge trading pattern found.",
-        "recommendations": [
-            "Take a break after consecutive losses",
-            "Stick to your predetermined position sizing rules",
-            "Practice mindfulness techniques before trading"
-        ] if is_revenge_trading else []
-    }
+    analysis = predict_trader_type_analysis(df)
+    return analysis
 
 def calculate_performance_metrics(df: pd.DataFrame) -> dict:
     """Calculate key performance metrics"""
@@ -434,26 +559,18 @@ async def get_performance_metrics(session_id: str):
         # Calculate performance metrics
         metrics = calculate_performance_metrics(df)
         
-        # Calculate bias summary
-        overtrading_result = detect_overtrading(df)
-        loss_aversion_result = detect_loss_aversion(df)
-        revenge_trading_result = detect_revenge_trading(df)
+        # Detect trader type using ML model and generate bias summary
+        trader_analysis = predict_trader_type_analysis(df)
+        trader_confidence = trader_analysis.get('confidence_score', 0.0)
+        
+        # Extract trader type from description
+        trader_type_str = trader_analysis.get('type', 'Unknown').replace('Trader Type: ', '')
         
         bias_summary = [
             BiasSummary(
-                bias_type="Overtrading",
-                count=len(df) if overtrading_result["confidence_score"] > 0.3 else 0,
-                percentage=overtrading_result["confidence_score"] * 100
-            ),
-            BiasSummary(
-                bias_type="Loss Aversion",
-                count=len(df[df['profit_loss'] < 0]) if loss_aversion_result["confidence_score"] > 0.3 else 0,
-                percentage=loss_aversion_result["confidence_score"] * 100
-            ),
-            BiasSummary(
-                bias_type="Revenge Trading",
-                count=len(df) if revenge_trading_result["confidence_score"] > 0.3 else 0,
-                percentage=revenge_trading_result["confidence_score"] * 100
+                bias_type=trader_type_str,
+                count=len(df),
+                percentage=trader_confidence * 100
             )
         ]
         
@@ -620,6 +737,11 @@ async def download_what_if_report(session_id: str, request: WhatIfDownloadReques
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
 
+@app.on_event("startup")
+async def startup_event():
+    """Load model on startup"""
+    load_model()
+
 @app.get("/analyze/{session_id}", response_model=AnalysisResponse,
          summary="Analyze Trading Behavior",
          description="Analyze uploaded trading history for behavioral biases")
@@ -638,30 +760,23 @@ async def analyze_trading_history(session_id: str):
         # Validate required columns
         validate_required_columns(df)
 
-        # Detect biases
-        overtrading_result = detect_overtrading(df)
-        loss_aversion_result = detect_loss_aversion(df)
-        revenge_trading_result = detect_revenge_trading(df)
+        # Detect trader type using ML model
+        trader_type_analysis = predict_trader_type_analysis(df)
 
         biases_detected = [
-            BiasDetectionResult(**overtrading_result),
-            BiasDetectionResult(**loss_aversion_result),
-            BiasDetectionResult(**revenge_trading_result)
+            BiasDetectionResult(**trader_type_analysis)
         ]
-
-        # Filter out biases with low confidence
-        significant_biases = [bias for bias in biases_detected if bias.confidence_score > 0.3]
 
         # Store results
         analysis_results[session_id] = {
-            "biases_detected": significant_biases,
+            "biases_detected": biases_detected,
             "total_trades": len(df),
             "win_rate": len(df[df['profit_loss'] > 0]) / len(df) if len(df) > 0 else 0
         }
 
         return AnalysisResponse(
             session_id=session_id,
-            biases_detected=significant_biases,
+            biases_detected=biases_detected,
             summary={
                 "total_trades": len(df),
                 "win_rate": round(len(df[df['profit_loss'] > 0]) / len(df) * 100, 2) if len(df) > 0 else 0,
