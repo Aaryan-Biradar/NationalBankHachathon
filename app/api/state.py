@@ -13,6 +13,7 @@ TRADER_TYPES = {
 
 uploaded_files: dict[str, bytes] = {}
 analysis_results: dict[str, AnalysisStoreRecord] = {}
+csv_processing_summaries: dict[str, CsvProcessingSummary] = {}
 model: xgb.XGBClassifier | None = None
 
 
