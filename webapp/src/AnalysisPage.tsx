@@ -1,20 +1,15 @@
 import { memo, useMemo } from 'react'
 import type { AnalysisResult, BiasKey, SessionHistoryItem } from './types'
+import { getBiasLabel, getRiskLabel, getTraderTypeLabel, useI18n } from './i18n'
 
 const round = (value: number) => Math.round(value * 100) / 100
 const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(n % 1 === 0 ? 0 : 2)
 
-const formatDate = (timestamp: string) => {
-    const date = new Date(timestamp)
-    if (Number.isNaN(date.getTime())) return timestamp
-    return date.toLocaleString()
-}
-
-const BIAS_LABELS: Record<BiasKey, { label: string; color: string; icon: string }> = {
-    calm: { label: 'Calm Discipline', color: '#087A67', icon: '🧘' },
-    lossAversion: { label: 'Loss Aversion', color: '#C17A00', icon: '😰' },
-    overtrading: { label: 'Overtrading', color: '#D93236', icon: '⚡' },
-    revengeTrading: { label: 'Revenge Trading', color: '#8E2E1A', icon: '🔥' },
+const BIAS_META: Record<BiasKey, { color: string; icon: string }> = {
+    calm: { color: '#087A67', icon: '🧘' },
+    lossAversion: { color: '#C17A00', icon: '😰' },
+    overtrading: { color: '#D93236', icon: '⚡' },
+    revengeTrading: { color: '#8E2E1A', icon: '🔥' },
 }
 
 interface AnalysisPageProps {
@@ -28,7 +23,8 @@ interface AnalysisPageProps {
 /* ─── SVG sub-components ─── */
 
 const CumulativePnLChart = memo(function CumulativePnLChart({ values }: { values: number[] }) {
-    if (values.length < 2) return <p className="empty-state">Need at least 2 records.</p>
+    const { t } = useI18n()
+    if (values.length < 2) return <p className="empty-state">{t('analysis.needAtLeast2')}</p>
 
     const sampled = useMemo(() => {
         const MAX_PTS = 200
@@ -99,16 +95,18 @@ const CumulativePnLChart = memo(function CumulativePnLChart({ values }: { values
 })
 
 const BiasScoresChart = memo(function BiasScoresChart({ biases }: { biases: AnalysisResult['biases'] }) {
+    const { t } = useI18n()
     const W = 560, H = 200, PAD = { t: 14, r: 24, b: 10, l: 140 }
     const plotW = W - PAD.l - PAD.r
-    const keys = Object.keys(BIAS_LABELS) as BiasKey[]
+    const keys = Object.keys(BIAS_META) as BiasKey[]
     const barH = 32, gap = 12
     const maxScore = Math.max(...keys.map(k => biases[k].score), 1)
 
     return (
         <svg viewBox={`0 0 ${W} ${H}`} className="chart-svg" preserveAspectRatio="xMidYMid meet">
             {keys.map((key, i) => {
-                const { label, color, icon } = BIAS_LABELS[key]
+                const { color, icon } = BIAS_META[key]
+                const label = getBiasLabel(key, t)
                 const score = biases[key].score
                 const barW = Math.max(2, (score / maxScore) * plotW)
                 const y = PAD.t + i * (barH + gap)
@@ -175,6 +173,7 @@ const HourlyActivityChart = memo(function HourlyActivityChart({ data }: { data: 
 })
 
 const WinLossDonut = memo(function WinLossDonut({ winRate, totalTrades }: { winRate: number; totalTrades: number }) {
+    const { t } = useI18n()
     const size = 160, cx = size / 2, cy = size / 2, r = 56, stroke = 14
     const wins = Math.round((winRate / 100) * totalTrades)
     const losses = totalTrades - wins
@@ -199,20 +198,21 @@ const WinLossDonut = memo(function WinLossDonut({ winRate, totalTrades }: { winR
                 <text x={cx} y={cy - 4} textAnchor="middle" fontSize="22" fontWeight="700" fill="var(--ink-900)">
                     {round(winRate)}%
                 </text>
-                <text x={cx} y={cy + 14} textAnchor="middle" fontSize="10" fill="var(--ink-500)">win rate</text>
+                <text x={cx} y={cy + 14} textAnchor="middle" fontSize="10" fill="var(--ink-500)">{t('analysis.winRateSmall')}</text>
             </svg>
             <div className="donut-legend">
                 <span className="legend-dot legend-win" />
-                <span>{wins} wins</span>
+                <span>{t('analysis.wins', { count: wins })}</span>
                 <span className="legend-dot legend-loss" />
-                <span>{losses} losses</span>
+                <span>{t('analysis.losses', { count: losses })}</span>
             </div>
         </div>
     )
 })
 
 const PnLDistribution = memo(function PnLDistribution({ trades }: { trades: AnalysisResult['trades'] }) {
-    if (!trades || trades.length < 2) return <p className="empty-state">Not enough data.</p>
+    const { t } = useI18n()
+    if (!trades || trades.length < 2) return <p className="empty-state">{t('analysis.notEnoughData')}</p>
 
     const distribution = useMemo(() => {
         const pnls = trades.map((t) => t.profitLoss ?? 0).filter((v) => v !== 0)
@@ -243,7 +243,7 @@ const PnLDistribution = memo(function PnLDistribution({ trades }: { trades: Anal
         }
     }, [trades])
 
-    if (!distribution) return <p className="empty-state">No P/L data.</p>
+    if (!distribution) return <p className="empty-state">{t('analysis.noPnlData')}</p>
 
     const W = 560, H = 150, PAD = { t: 10, r: 12, b: 24, l: 12 }
     const plotW = W - PAD.l - PAD.r, plotH = H - PAD.t - PAD.b
@@ -264,24 +264,27 @@ const PnLDistribution = memo(function PnLDistribution({ trades }: { trades: Anal
             })}
             <text x={PAD.l} y={H - 4} fontSize="9" fill="var(--ink-500)">{fmt(distribution.min)}</text>
             <text x={W - PAD.r} y={H - 4} textAnchor="end" fontSize="9" fill="var(--ink-500)">{fmt(distribution.max)}</text>
-            <text x={W / 2} y={H - 4} textAnchor="middle" fontSize="9" fill="var(--ink-500)">P/L →</text>
+            <text x={W / 2} y={H - 4} textAnchor="middle" fontSize="9" fill="var(--ink-500)">{t('analysis.pnlAxis')}</text>
         </svg>
     )
 })
 
 export default function AnalysisPage({ analysis, history, onBack, onSave, onLoadHistory }: AnalysisPageProps) {
+    const { t, formatDateTime } = useI18n()
     const totalPnL = analysis.metrics.totalProfitLoss
-    const biasKeys = useMemo(() => Object.keys(BIAS_LABELS) as BiasKey[], [])
+    const biasKeys = useMemo(() => Object.keys(BIAS_META) as BiasKey[], [])
+    const traderLabel = getTraderTypeLabel(analysis.traderType, t)
+    const riskLabel = getRiskLabel(analysis.riskProfile.label, t)
 
     return (
         <>
             <div className="analysis-topbar">
                 <button className="back-btn" type="button" onClick={onBack}>
-                    ← Back to Home
+                    ← {t('analysis.back')}
                 </button>
-                <h1 className="analysis-title">Analysis Results</h1>
+                <h1 className="analysis-title">{t('analysis.title')}</h1>
                 <button className="ghost" type="button" onClick={onSave}>
-                    Save to Local History
+                    {t('analysis.save')}
                 </button>
             </div>
 
@@ -289,42 +292,43 @@ export default function AnalysisPage({ analysis, history, onBack, onSave, onLoad
                 {/* ── Summary Strip ── */}
                 <section className="card metrics-row">
                     <article>
-                        <p>Total Trades</p>
+                        <p>{t('analysis.totalTrades')}</p>
                         <h3>{analysis.metrics.totalTrades}</h3>
                     </article>
                     <article>
-                        <p>Win Rate</p>
+                        <p>{t('analysis.winRate')}</p>
                         <h3>{round(analysis.metrics.winRate)}%</h3>
                     </article>
                     <article>
-                        <p>Total P/L</p>
+                        <p>{t('analysis.totalPnL')}</p>
                         <h3 className={totalPnL >= 0 ? 'text-green' : 'text-red'}>
                             {totalPnL >= 0 ? '+' : ''}{fmt(totalPnL)}
                         </h3>
                     </article>
                     <article>
-                        <p>Avg Win / Loss</p>
+                        <p>{t('analysis.avgWinLoss')}</p>
                         <h3>
                             ${round(analysis.metrics.averageWin)} / ${round(analysis.metrics.averageLoss)}
                         </h3>
                     </article>
                     <article>
-                        <p>Risk Score</p>
+                        <p>{t('analysis.riskScore')}</p>
                         <h3>{round(analysis.riskProfile.score)}</h3>
-                        <small className="risk-badge">{analysis.riskProfile.label}</small>
+                        <small className="risk-badge">{riskLabel}</small>
                     </article>
                 </section>
 
                 {/* ── Behavioral Profile ── */}
                 <section id="behavioral-profile" className="card">
-                    <h2>Behavioral Profile</h2>
+                    <h2>{t('analysis.behavioralProfile')}</h2>
                     <p className="profile-line">
-                        Active Profile: <strong>{analysis.traderType}</strong> · Risk Profile: <strong>{analysis.riskProfile.label}</strong>
+                        {t('analysis.activeProfile', { trader: traderLabel, risk: riskLabel })}
                     </p>
 
                     <div className="bias-grid">
                         {biasKeys.map((key) => {
-                            const { label, color, icon } = BIAS_LABELS[key]
+                            const { color, icon } = BIAS_META[key]
+                            const label = getBiasLabel(key, t)
                             const bias = analysis.biases[key]
                             return (
                                 <article className="bias-card" key={key} style={{ '--bias-accent': color } as React.CSSProperties}>
@@ -336,7 +340,7 @@ export default function AnalysisPage({ analysis, history, onBack, onSave, onLoad
                                     <div className="bias-bar-track">
                                         <div className="bias-bar-fill" style={{ width: `${Math.min(bias.score, 100)}%`, background: color }} />
                                     </div>
-                                    <small>Confidence: {round(bias.confidence)}%</small>
+                                    <small>{t('analysis.confidence', { value: round(bias.confidence) })}</small>
                                     <ul>
                                         {bias.evidence.slice(0, 2).map((line) => (
                                             <li key={line}>{line}</li>
@@ -350,34 +354,34 @@ export default function AnalysisPage({ analysis, history, onBack, onSave, onLoad
 
                 {/* ── Graphical Insights ── */}
                 <section id="graphical-insights" className="card">
-                    <h2>Graphical Insights</h2>
+                    <h2>{t('analysis.graphicalInsights')}</h2>
 
                     <div className="insights-grid">
                         {/* Row 1: P/L Timeline + Bias Scores */}
                         <article className="chart-card chart-wide">
-                            <h3>📈 Cumulative P/L Timeline</h3>
+                            <h3>📈 {t('analysis.cumulativeTimeline')}</h3>
                             <CumulativePnLChart values={analysis.chartData.cumulativePnL} />
                         </article>
 
                         <article className="chart-card chart-wide">
-                            <h3>Bias Score Comparison</h3>
+                            <h3>{t('analysis.biasScoreComparison')}</h3>
                             <BiasScoresChart biases={analysis.biases} />
                         </article>
 
                         {/* Row 2: Hourly Activity + Win/Loss */}
                         <article className="chart-card chart-wide">
-                            <h3>🕐 Hourly Trading Activity</h3>
+                            <h3>🕐 {t('analysis.hourlyActivity')}</h3>
                             <HourlyActivityChart data={analysis.chartData.hourlyActivity} />
                         </article>
 
                         <article className="chart-card chart-full">
-                            <h3>🏆 Win / Loss Ratio</h3>
+                            <h3>🏆 {t('analysis.winLossRatio')}</h3>
                             <WinLossDonut winRate={analysis.metrics.winRate} totalTrades={analysis.metrics.totalTrades} />
                         </article>
 
                         {/* Row 3: P/L Distribution */}
                         <article className="chart-card chart-full">
-                            <h3>📊 P/L Distribution</h3>
+                            <h3>📊 {t('analysis.pnlDistribution')}</h3>
                             <PnLDistribution trades={analysis.trades} />
                         </article>
                     </div>
@@ -385,9 +389,9 @@ export default function AnalysisPage({ analysis, history, onBack, onSave, onLoad
 
                 {/* ── Saved History ── */}
                 <section id="saved-history" className="card">
-                    <h2>Saved Analysis History</h2>
+                    <h2>{t('analysis.savedHistory')}</h2>
                     {history.length === 0 ? (
-                        <p className="empty-state">No saved sessions yet.</p>
+                        <p className="empty-state">{t('analysis.noSavedSessions')}</p>
                     ) : (
                         <div className="history-list">
                             {history.map((item) => (
@@ -397,9 +401,9 @@ export default function AnalysisPage({ analysis, history, onBack, onSave, onLoad
                                     type="button"
                                     onClick={() => onLoadHistory(item.analysis)}
                                 >
-                                    <strong>{item.traderType}</strong>
-                                    <span>{item.tradesCount} trades</span>
-                                    <span>{formatDate(item.createdAt)}</span>
+                                    <strong>{getTraderTypeLabel(item.traderType, t)}</strong>
+                                    <span>{t('analysis.tradesCount', { count: item.tradesCount })}</span>
+                                    <span>{formatDateTime(item.createdAt)}</span>
                                 </button>
                             ))}
                         </div>

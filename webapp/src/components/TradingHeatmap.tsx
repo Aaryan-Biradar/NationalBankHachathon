@@ -1,5 +1,6 @@
 import { memo, useMemo, useState } from 'react'
 import type { Trade } from '../types'
+import { useI18n } from '../i18n'
 
 type DensityMode = 'trades' | 'pnl' | 'avgPnl'
 type ColumnMode = '1hour' | '2hour' | '4hour' | 'session'
@@ -7,8 +8,6 @@ type ColumnMode = '1hour' | '2hour' | '4hour' | 'session'
 interface TradingHeatmapProps {
   trades: Trade[]
 }
-
-const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function getColumnCount(mode: ColumnMode): number {
   if (mode === '1hour') return 24
@@ -27,16 +26,18 @@ function getColumnIndex(mode: ColumnMode, hour: number): number {
   return 3
 }
 
-function formatCellLabel(col: number, mode: ColumnMode): string {
+function formatCellLabel(col: number, mode: ColumnMode, labels: { asian: string; european: string; us: string; after: string }): string {
   if (mode === '1hour') return col.toString().padStart(2, '0')
   if (mode === '2hour') return (col * 2).toString().padStart(2, '0')
   if (mode === '4hour') return (col * 4).toString().padStart(2, '0')
-  return ['Asian', 'European', 'US', 'After'][col] || ''
+  return [labels.asian, labels.european, labels.us, labels.after][col] || ''
 }
 
 function TradingHeatmap({ trades }: TradingHeatmapProps) {
+  const { t } = useI18n()
   const [densityMode, setDensityMode] = useState<DensityMode>('pnl')
   const [columnMode, setColumnMode] = useState<ColumnMode>('1hour')
+  const daysOfWeek = [t('day.sun'), t('day.mon'), t('day.tue'), t('day.wed'), t('day.thu'), t('day.fri'), t('day.sat')]
 
   const parsedTrades = useMemo(() => {
     const parsed: Array<{ day: number; hour: number; pnl: number }> = []
@@ -62,7 +63,14 @@ function TradingHeatmap({ trades }: TradingHeatmapProps) {
         mode,
         {
           cols,
-          labels: Array.from({ length: cols }, (_, col) => formatCellLabel(col, mode)),
+          labels: Array.from({ length: cols }, (_, col) =>
+            formatCellLabel(col, mode, {
+              asian: t('heatmap.session.asian'),
+              european: t('heatmap.session.european'),
+              us: t('heatmap.session.us'),
+              after: t('heatmap.session.after'),
+            }),
+          ),
           sums: new Float64Array(7 * cols),
           counts: new Uint32Array(7 * cols),
         },
@@ -87,7 +95,7 @@ function TradingHeatmap({ trades }: TradingHeatmapProps) {
     }
 
     return result
-  }, [parsedTrades])
+  }, [parsedTrades, t])
 
   const heatmapData = useMemo(() => {
     const aggregate = aggregatesByColumnMode[columnMode]
@@ -170,41 +178,41 @@ function TradingHeatmap({ trades }: TradingHeatmapProps) {
   return (
     <div className="trading-heatmap-container">
       <div className="heatmap-header">
-        <h3>📊 Trading Activity Heatmap</h3>
+        <h3>📊 {t('heatmap.title')}</h3>
         <div className="heatmap-controls">
           <div className="control-group">
-            <label>DENSITY:</label>
+            <label>{t('heatmap.density')}</label>
             <button className={densityMode === 'trades' ? 'active' : ''} onClick={() => setDensityMode('trades')} type="button">
-              Trades
+              {t('heatmap.trades')}
             </button>
             <button className={densityMode === 'pnl' ? 'active' : ''} onClick={() => setDensityMode('pnl')} type="button">
-              PnL
+              {t('heatmap.pnl')}
             </button>
             <button className={densityMode === 'avgPnl' ? 'active' : ''} onClick={() => setDensityMode('avgPnl')} type="button">
-              Avg PnL
+              {t('heatmap.avgPnl')}
             </button>
           </div>
 
           <div className="control-group">
-            <label>COLUMNS:</label>
+            <label>{t('heatmap.columns')}</label>
             <button className={columnMode === '1hour' ? 'active' : ''} onClick={() => setColumnMode('1hour')} type="button">
-              1 Hour
+              {t('heatmap.oneHour')}
             </button>
             <button className={columnMode === '2hour' ? 'active' : ''} onClick={() => setColumnMode('2hour')} type="button">
-              2 Hour
+              {t('heatmap.twoHour')}
             </button>
             <button className={columnMode === '4hour' ? 'active' : ''} onClick={() => setColumnMode('4hour')} type="button">
-              4 Hour
+              {t('heatmap.fourHour')}
             </button>
             <button className={columnMode === 'session' ? 'active' : ''} onClick={() => setColumnMode('session')} type="button">
-              Session
+              {t('heatmap.session')}
             </button>
           </div>
 
           <div className="control-group">
-            <label>ROWS:</label>
+            <label>{t('heatmap.rows')}</label>
             <button className="active" type="button">
-              Day of Week
+              {t('heatmap.dayOfWeek')}
             </button>
           </div>
         </div>
@@ -219,7 +227,7 @@ function TradingHeatmap({ trades }: TradingHeatmapProps) {
             </div>
           ))}
 
-          {DAYS_OF_WEEK.map((day, rowIdx) => (
+          {daysOfWeek.map((day, rowIdx) => (
             <div key={day} style={{ display: 'contents' }}>
               <div className="heatmap-cell row-label">{day}</div>
               {Array.from({ length: heatmapData.cols }, (_, colIdx) => {
@@ -232,8 +240,8 @@ function TradingHeatmap({ trades }: TradingHeatmapProps) {
                     key={`${rowIdx}-${colIdx}`}
                     className="heatmap-cell data-cell"
                     style={{ background: colors.background, color: colors.color }}
-                    title={`${day} ${heatmapData.labels[colIdx]}: ${count} trades, ${formatValue(value)}`}
-                  >
+                     title={`${day} ${heatmapData.labels[colIdx]}: ${count} ${t('heatmap.trades')}, ${formatValue(value)}`}
+                   >
                     {count > 0 ? formatValue(value) : ''}
                   </div>
                 )
@@ -245,10 +253,10 @@ function TradingHeatmap({ trades }: TradingHeatmapProps) {
 
       <div className="heatmap-legend">
         <span className="legend-item">
-          <span className="legend-box loss"></span> Loss
+          <span className="legend-box loss"></span> {t('heatmap.legend.loss')}
         </span>
         <span className="legend-item">
-          <span className="legend-box profit"></span> Profit
+          <span className="legend-box profit"></span> {t('heatmap.legend.profit')}
         </span>
       </div>
     </div>

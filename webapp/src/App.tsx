@@ -3,6 +3,7 @@ import './index.css'
 import AnalysisPage from './AnalysisPage'
 import { API_BASE_URL, analyzeTrading, getTrades, mapApiResponseToAnalysis, uploadTradingHistory } from './lib/api'
 import type { AnalysisResult, SessionHistoryItem, TraderType } from './types'
+import { useI18n } from './i18n'
 
 const HISTORY_KEY = 'nb-bias-detector-history-v1'
 
@@ -48,6 +49,7 @@ const traderPalette: Record<TraderType, string> = {
 type Page = 'home' | 'analysis'
 
 function App() {
+  const { t, toggleLanguage } = useI18n()
   const [page, setPage] = useState<Page>('home')
   const [isParsing, setIsParsing] = useState(false)
   const [fileInputKey, setFileInputKey] = useState(0)
@@ -91,8 +93,8 @@ function App() {
         window.scrollTo(0, 0)
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to analyze trades'
-      setParseIssues([`API Error: ${errorMessage}. Backend URL: ${API_BASE_URL}`])
+      const errorMessage = error instanceof Error ? error.message : t('app.error.fallback')
+      setParseIssues([t('app.error.api', { message: errorMessage, url: API_BASE_URL })])
       setTradesCount(0)
       setAnalysis(null)
     } finally {
@@ -130,7 +132,7 @@ function App() {
   return (
     <div className="app-shell" style={{ '--accent-color': personaAccent } as React.CSSProperties}>
       <a className="skip-link" href="#main-content">
-        Skip to Main Content
+        {t('app.skipToContent')}
       </a>
       <header className="nb-header">
         <div className="nb-topbar">
@@ -142,18 +144,18 @@ function App() {
             {page === 'home' ? (
               <a href="#trading-input"> </a>
             ) : (
-              <>
-                <a href="#behavioral-profile">Profile</a>
-                <a href="#graphical-insights">Insights</a>
-                <a href="#coaching-plan">Coaching</a>
-                <a href="#saved-history">History</a>
+                <>
+                <a href="#behavioral-profile">{t('app.nav.profile')}</a>
+                <a href="#graphical-insights">{t('app.nav.insights')}</a>
+                <a href="#coaching-plan">{t('app.nav.coaching')}</a>
+                <a href="#saved-history">{t('app.nav.history')}</a>
               </>
             )}
           </nav>
           <div className="nb-topbar-right">
-            <a href="#">About Us</a>
-            <button className="nb-signin" type="button">
-              Français
+            <a href="#">{t('app.about')}</a>
+            <button className="nb-signin" type="button" onClick={toggleLanguage}>
+              {t('app.language.toggle')}
             </button>
           </div>
         </div>
@@ -164,44 +166,43 @@ function App() {
         <>
           <section className="hero">
             <div className="hero-copy">
-              <p className="eyebrow">Trading Bias Detector</p>
-              <h1>Take Control of Trading Decisions</h1>
+              <p className="eyebrow">{t('app.hero.eyebrow')}</p>
+              <h1>{t('app.hero.title')}</h1>
               <p>
-                Upload trade history, detect behavioral bias using ML in seconds, and receive personalized coaching for
-                calm, loss-averse, overtrading, and revenge-trading profiles.
+                {t('app.hero.subtitle')}
               </p>
               <div className="pill-row">
-                <span>ML-Powered Analysis</span>
-                <span>Personalized Feedback</span>
-                <span>Real-Time Results</span>
+                <span>{t('app.hero.pill1')}</span>
+                <span>{t('app.hero.pill2')}</span>
+                <span>{t('app.hero.pill3')}</span>
               </div>
             </div>
           </section>
           <main id="main-content" className="layout">
             <section id="trading-input" className="card controls">
-              <h2>Trading History Input</h2>
+              <h2>{t('app.input.title')}</h2>
               <div className="control-grid">
                 <label className="upload-zone">
-                  <span className="upload-kicker">Step 1</span>
-                  <strong>{isParsing ? 'Reading File…' : 'Upload Trading File'}</strong>
-                  <span>Drop a `.csv`, `.xls`, or `.xlsx` file with your trading history.</span>
+                  <span className="upload-kicker">{t('app.input.step1')}</span>
+                  <strong>{isParsing ? t('app.input.readingFile') : t('app.input.uploadFile')}</strong>
+                  <span>{t('app.input.dropHint')}</span>
                   <input
                     key={fileInputKey}
                     className="file-input"
                     type="file"
                     name="trade-file"
-                    aria-label="Upload trade file"
+                    aria-label={t('app.input.ariaUpload')}
                     accept=".csv,.xlsx,.xls"
                     onChange={handleFile}
                   />
-                  <small>Required fields: timestamp, buy/sell, asset, quantity, entry/exit, P/L, account balance.</small>
+                  <small>{t('app.input.requiredFields')}</small>
                 </label>
-                <article className="upload-notes" aria-label="Upload notes">
-                  <h3>Before You Upload</h3>
+                <article className="upload-notes" aria-label={t('app.uploadNotes.title')}>
+                  <h3>{t('app.uploadNotes.title')}</h3>
                   <ul>
-                    <li>Use one trade per row.</li>
-                    <li>Numbers can include decimals.</li>
-                    <li>Missing values are flagged under Data Integrity Notes.</li>
+                    <li>{t('app.uploadNotes.item1')}</li>
+                    <li>{t('app.uploadNotes.item2')}</li>
+                    <li>{t('app.uploadNotes.item3')}</li>
                   </ul>
                   <p>
                     Example: 2025-03-01 9:30,NFLX,SELL,4,1754.20,1756.06,7.36,10007.36
@@ -235,20 +236,20 @@ function App() {
         <div className="loading-overlay">
           <div className="loading-container">
             <div className="spinner" />
-            <h2 className="loading-title">Analyzing Your Trading Data</h2>
-            <p className="loading-subtitle">Processing trades and detecting behavioral patterns...</p>
+            <h2 className="loading-title">{t('app.loading.title')}</h2>
+            <p className="loading-subtitle">{t('app.loading.subtitle')}</p>
             <div className="progress-steps">
               <div className="progress-step active">
                 <span className="step-number">1</span>
-                <span className="step-label">Parsing File</span>
+                <span className="step-label">{t('app.loading.step1')}</span>
               </div>
               <div className="progress-step active">
                 <span className="step-number">2</span>
-                <span className="step-label">ML Analysis</span>
+                <span className="step-label">{t('app.loading.step2')}</span>
               </div>
               <div className="progress-step">
                 <span className="step-number">3</span>
-                <span className="step-label">Generating Report</span>
+                <span className="step-label">{t('app.loading.step3')}</span>
               </div>
             </div>
           </div>

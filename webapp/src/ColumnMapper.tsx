@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ColumnMapping } from './lib/parsers'
 import { FIELD_LABELS, REQUIRED_FIELDS } from './lib/parsers'
+import { useI18n } from './i18n'
 
 const FIELDS = Object.keys(FIELD_LABELS)
 
@@ -21,7 +22,18 @@ export default function ColumnMapper({
     onConfirm,
     onCancel,
 }: ColumnMapperProps) {
+    const { t } = useI18n()
     const [mapping, setMapping] = useState<ColumnMapping>(initialMapping)
+    const fieldLabels: Record<string, string> = {
+        timestamp: t('mapper.field.timestamp'),
+        side: t('mapper.field.side'),
+        asset: t('mapper.field.asset'),
+        quantity: t('mapper.field.quantity'),
+        entryPrice: t('mapper.field.entryPrice'),
+        exitPrice: t('mapper.field.exitPrice'),
+        profitLoss: t('mapper.field.profitLoss'),
+        balance: t('mapper.field.balance'),
+    }
 
     const autoDetectedCount = Object.keys(initialMapping).length
     const allRequiredMapped = REQUIRED_FIELDS.every((f) => mapping[f])
@@ -52,7 +64,7 @@ export default function ColumnMapper({
                 <span className="mapper-size">{formatSize(fileSize)}</span>
             </div>
 
-            <p className="mapper-section-label">Column Mapping</p>
+            <p className="mapper-section-label">{t('mapper.section')}</p>
 
             <div className="mapper-grid">
                 {FIELDS.map((field) => {
@@ -60,7 +72,7 @@ export default function ColumnMapper({
                     return (
                         <div className="mapper-field" key={field}>
                             <label htmlFor={`map-${field}`}>
-                                {FIELD_LABELS[field]}
+                                {fieldLabels[field] ?? FIELD_LABELS[field]}
                                 {isRequired && <span className="mapper-req"> *</span>}
                             </label>
                             <select
@@ -68,7 +80,7 @@ export default function ColumnMapper({
                                 value={mapping[field] ?? ''}
                                 onChange={(e) => handleChange(field, e.target.value)}
                             >
-                                <option value="">-- select --</option>
+                                <option value="">{t('mapper.select')}</option>
                                 {headers.map((h) => (
                                     <option key={h} value={h}>
                                         {h}
@@ -82,13 +94,13 @@ export default function ColumnMapper({
 
             <p className={`mapper-status ${allRequiredMapped ? 'mapper-ok' : 'mapper-warn'}`}>
                 {allRequiredMapped
-                    ? `✓ ${autoDetectedCount} columns auto-detected successfully`
-                    : '⚠ Please map all required (*) fields before proceeding'}
+                    ? `✓ ${t('mapper.status.ok', { count: autoDetectedCount })}`
+                    : `⚠ ${t('mapper.status.warn')}`}
             </p>
 
             <div className="mapper-actions">
                 <button type="button" className="ghost" onClick={onCancel}>
-                    Cancel
+                    {t('mapper.cancel')}
                 </button>
                 <button
                     type="button"
@@ -96,7 +108,7 @@ export default function ColumnMapper({
                     disabled={!allRequiredMapped}
                     onClick={() => onConfirm(mapping)}
                 >
-                    Analyze Trades
+                    {t('mapper.analyze')}
                 </button>
             </div>
         </section>
