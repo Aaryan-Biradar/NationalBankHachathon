@@ -59,11 +59,11 @@ class TradeEntry(BaseModel):
     timestamp: str
     asset: str
     side: str
-    quantity: float
-    entry_price: float
-    exit_price: float
-    profit_loss: float
-    balance: float
+    quantity: Optional[float] = None
+    entry_price: Optional[float] = None
+    exit_price: Optional[float] = None
+    profit_loss: Optional[float] = None
+    balance: Optional[float] = None
 
 class DataResponse(BaseModel):
     session_id: str
@@ -189,7 +189,13 @@ def predict_trader_type_analysis(df: pd.DataFrame) -> dict:
             "type": "Trader Type Prediction",
             "confidence_score": 0.0,
             "description": "Unable to make prediction - model not loaded or insufficient data.",
-            "recommendations": []
+            "recommendations": [],
+            "all_bias_scores": {
+                "calm_trader": 0.0,
+                "loss_averse_trader": 0.0,
+                "overtrader": 0.0,
+                "revenge_trader": 0.0
+            }
         }
     
     try:
@@ -283,11 +289,28 @@ def predict_trader_type_analysis(df: pd.DataFrame) -> dict:
         predictions = model.predict(X)
         probabilities = model.predict_proba(X)
         
+        # Calculate average probability for each trader type across all trades
+        avg_probabilities = probabilities.mean(axis=0)
+        
+        # Calculate confidence scores based on prediction consistency
+        # Lower standard deviation = higher confidence (more consistent predictions)
+        std_probabilities = probabilities.std(axis=0)
+        
+        # Confidence score: High when predictions are consistent (low std) and probability is high
+        # Scale: 0-100, where high score means high confidence
+        confidence_scores = {}
+        for idx, trader_type in TRADER_TYPES.items():
+            # Confidence is based on:
+            # 1. Average probability (weight: 60%)
+            # 2. Consistency (1 - normalized std) (weight: 40%)
+            consistency_factor = max(0, 1 - (std_probabilities[idx] * 2))  # *2 to normalize std
+            confidence = (avg_probabilities[idx] * 0.6 + consistency_factor * 0.4) * 100
+            confidence_scores[trader_type] = min(100, max(0, confidence))
+        
         # Get most common trader type
         unique, counts = np.unique(predictions, return_counts=True)
         most_common_idx = unique[np.argmax(counts)]
         most_common_type = TRADER_TYPES[most_common_idx]
-        confidence = np.max(probabilities, axis=1).mean()
         
         # Generate recommendations based on trader type
         recommendations_map = {
@@ -322,12 +345,21 @@ def predict_trader_type_analysis(df: pd.DataFrame) -> dict:
             'overtrader': 'You trade frequently, potentially due to over-confidence or lack of discipline',
             'revenge_trader': 'Your trading shows increased activity and risk after losses, indicating emotional decisions'
         }
+
+        print(f"Predicted Trader Type: {most_common_type}, Confidence: {avg_probabilities[most_common_idx]:.2f}")
         
+        # Return results with average probabilities for all bias types
         return {
             "type": f"Trader Type: {most_common_type.replace('_', ' ').title()}",
-            "confidence_score": float(confidence),
+            "confidence_score": float(avg_probabilities[most_common_idx]),
             "description": trader_type_description.get(most_common_type, "Unknown trader type pattern detected"),
-            "recommendations": recommendations_map.get(most_common_type, [])
+            "recommendations": recommendations_map.get(most_common_type, []),
+            "all_bias_scores": {
+                "calm_trader": float(avg_probabilities[0]),
+                "loss_averse_trader": float(avg_probabilities[1]),
+                "overtrader": float(avg_probabilities[2]),
+                "revenge_trader": float(avg_probabilities[3])
+            }
         }
         
     except Exception as e:
@@ -335,7 +367,13 @@ def predict_trader_type_analysis(df: pd.DataFrame) -> dict:
             "type": "Trader Type Prediction",
             "confidence_score": 0.0,
             "description": f"Error during prediction: {str(e)}",
-            "recommendations": []
+            "recommendations": [],
+            "all_bias_scores": {
+                "calm_trader": 0.0,
+                "loss_averse_trader": 0.0,
+                "overtrader": 0.0,
+                "revenge_trader": 0.0
+            }
         }
 
 def detect_loss_aversion(df: pd.DataFrame) -> dict:
@@ -384,6 +422,23 @@ def get_all_trades(session_id: str) -> List[Dict]:
         content = uploaded_files[session_id]
         df = parse_csv_file(content)
         validate_required_columns(df)
+        
+        # Convert timestamp to datetime first
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        
+        # Ensure side is string and handle missing values
+        if 'side' in df.columns:
+            df['side'] = df['side'].fillna('BUY').astype(str)
+        
+        # Ensure asset is string
+        if 'asset' in df.columns:
+            df['asset'] = df['asset'].fillna('UNKNOWN').astype(str)
+        
+        # Convert timestamp to ISO string format
+        df['timestamp'] = df['timestamp'].apply(lambda x: x.isoformat() if pd.notna(x) else None)
+        
+        # Replace remaining NaN values with None for proper JSON serialization
+        df = df.replace({np.nan: None})
         
         # Convert DataFrame to list of dictionaries
         trades = df.to_dict('records')
@@ -740,7 +795,7 @@ async def startup_event():
          description="Analyze uploaded trading history for behavioral biases")
 async def analyze_trading_history(session_id: str):
     """
-    Analyze uploaded trading history for behavioral biases
+    Analyze uploaded trading history for behavioral biases using ML model
     """
     if session_id not in uploaded_files:
         raise HTTPException(status_code=404, detail="Session ID not found")
@@ -755,16 +810,58 @@ async def analyze_trading_history(session_id: str):
 
         # Detect trader type using ML model
         trader_type_analysis = predict_trader_type_analysis(df)
-
-        biases_detected = [
-            BiasDetectionResult(**trader_type_analysis)
-        ]
+        
+        # Extract all bias scores
+        all_bias_scores = trader_type_analysis.get('all_bias_scores', {})
+        
+        # Create individual bias detection results for each type
+        bias_descriptions = {
+            'calm_trader': 'Disciplined and consistent trading patterns with good emotional control',
+            'loss_averse_trader': 'Tendency to close winning trades quickly but hold losing positions longer',
+            'overtrader': 'Frequent trading, potentially due to over-confidence or lack of discipline',
+            'revenge_trader': 'Increased activity and risk after losses, indicating emotional decisions'
+        }
+        
+        bias_recommendations = {
+            'calm_trader': [
+                "Maintain your consistent approach",
+                "Continue with current position sizing",
+                "Optimize entry/exit timing for better profit capture"
+            ],
+            'loss_averse_trader': [
+                "Implement fixed take-profit levels to let winners run",
+                "Use stop-loss orders to systematically manage losing trades",
+                "Keep detailed trade journal to identify emotional decision patterns"
+            ],
+            'overtrader': [
+                "Set daily/weekly trade limits",
+                "Implement a cooling-off period between trades",
+                "Focus on high-conviction setups only"
+            ],
+            'revenge_trader': [
+                "Take breaks after consecutive losses",
+                "Implement a mandatory cooling-off period",
+                "Practice mindfulness and emotional regulation before trading"
+            ]
+        }
+        
+        biases_detected = []
+        
+        # Add results for all bias types with their ML-predicted scores
+        for bias_key, score in all_bias_scores.items():
+            biases_detected.append(BiasDetectionResult(
+                type=bias_key.replace('_', ' ').title(),
+                confidence_score=float(score),
+                description=bias_descriptions.get(bias_key, "Unknown bias pattern"),
+                recommendations=bias_recommendations.get(bias_key, [])
+            ))
 
         # Store results
         analysis_results[session_id] = {
             "biases_detected": biases_detected,
             "total_trades": len(df),
-            "win_rate": len(df[df['profit_loss'] > 0]) / len(df) if len(df) > 0 else 0
+            "win_rate": len(df[df['profit_loss'] > 0]) / len(df) if len(df) > 0 else 0,
+            "primary_type": trader_type_analysis.get('type', 'Unknown')
         }
 
         return AnalysisResponse(
@@ -773,7 +870,8 @@ async def analyze_trading_history(session_id: str):
             summary={
                 "total_trades": len(df),
                 "win_rate": round(len(df[df['profit_loss'] > 0]) / len(df) * 100, 2) if len(df) > 0 else 0,
-                "total_profit_loss": df['profit_loss'].sum() if len(df) > 0 else 0
+                "total_profit_loss": round(df['profit_loss'].sum(), 2) if len(df) > 0 else 0,
+                "primary_trader_type": trader_type_analysis.get('type', 'Unknown')
             }
         )
 

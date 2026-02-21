@@ -53,15 +53,20 @@ TradeReflect/
 
 **Backend:**
 - Python 3.x
-- FastAPI
-- scikit-learn / TensorFlow (ML models)
+- FastAPI (REST API)
+- XGBoost (ML classifier - 97%+ accuracy)
 - Pandas (data processing)
 
 **Frontend:**
 - React 18+
 - TypeScript
 - Vite (build tool)
-- Tailwind CSS (styling)
+- Modern CSS
+
+**Integration:**
+- Frontend communicates with backend via REST API at `http://localhost:8000`
+- Real-time ML inference on uploaded trading data
+- File upload → Analysis → Visualization pipeline
 
 ## Architecture
 
@@ -215,23 +220,40 @@ The model is evaluated on:
 ```bash
 cd app
 pip install -r requirements.txt
-python mltraining/train.py  # Train bias classifier
-python api/main.py          # Start API server
+
+# Train the ML model (if not already trained)
+cd mltraining
+python train.py
+
+# Start API server
+cd ../api
+python main.py
+# API will run on http://localhost:8000
 ```
 
 **Frontend Setup:**
 ```bash
 cd webapp
 npm install
-npm run dev  # Start development server
+npm run dev
+# Frontend will run on http://localhost:5173
 ```
 
 ### Usage
 
-1. Open the web interface (typically `http://localhost:5173`)
-2. Upload your trading CSV file or manually enter trades
-3. View bias analysis and get personalized recommendations
-4. Export insights and action plans
+1. **Start the backend API** (must be running on localhost:8000)
+2. **Open the web interface** at `http://localhost:5173`
+3. **Upload your trading CSV file** with required columns:
+   - `timestamp` - Trade timestamp
+   - `asset` - Asset/security symbol
+   - `side` - BUY or SELL
+   - `quantity` - Trade quantity
+   - `entry_price` - Entry price
+   - `exit_price` - Exit price
+   - `profit_loss` - Profit/Loss amount
+   - `balance` - Account balance
+4. **Get instant ML-powered analysis** with bias scores and recommendations
+5. **Save results** to local history for comparison
 
 ## Sample Data
 
