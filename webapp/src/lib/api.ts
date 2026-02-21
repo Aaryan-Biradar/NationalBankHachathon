@@ -1,14 +1,6 @@
 import type { AnalysisResult, Trade } from '../types'
 
-const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.toString().trim()
-
-export const API_BASE_URL = (
-  !rawApiBaseUrl
-    ? 'http://localhost:8000'
-    : /^\d+$/.test(rawApiBaseUrl)
-      ? `http://localhost:${rawApiBaseUrl}`
-      : rawApiBaseUrl
-).replace(/\/+$/, '')
+export const API_BASE_URL = "https://1bxdwrf2-8000.use.devtunnels.ms";
 
 async function readErrorDetails(response: Response): Promise<string> {
   const text = (await response.text()).trim()
