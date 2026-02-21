@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "hackathon2"
 version = "0.1.0"
@@ -31,3 +35,6 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["F", "I"]
+
+[tool.setuptools.packages.find]
+include = ["api*"]

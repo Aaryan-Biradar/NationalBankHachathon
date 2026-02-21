@@ -2,7 +2,7 @@ import os
 
 import xgboost as xgb
 
-from .schemas import AnalysisStoreRecord
+from .schemas import AnalysisStoreRecord, CsvProcessingSummary
 
 TRADER_TYPES = {
     0: "calm_trader",
@@ -13,6 +13,7 @@ TRADER_TYPES = {
 
 uploaded_files: dict[str, bytes] = {}
 analysis_results: dict[str, AnalysisStoreRecord] = {}
+csv_processing_summaries: dict[str, CsvProcessingSummary] = {}
 model: xgb.Booster | None = None
 
 

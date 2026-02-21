@@ -45,7 +45,7 @@ from .simulation_service import (
     generate_simulation_name,
     identify_excluded_trades,
 )
-from .state import analysis_results, uploaded_files
+from .state import analysis_results, csv_processing_summaries, uploaded_files
 
 router = APIRouter()
 
@@ -68,21 +68,24 @@ async def upload_trade_history(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail=csv_summary.error_message)
         validate_required_columns(df)
 
+        csv_processing_summary = CsvProcessingSummary(
+            status=csv_summary.status,
+            source_name=csv_summary.source_name,
+            empty_cells=csv_summary.empty_cells,
+            quantity_fills=csv_summary.quantity_fills,
+            entry_fills=csv_summary.entry_fills,
+            exit_fills=csv_summary.exit_fills,
+            profit_fixes=csv_summary.profit_fixes,
+            balance_fixes=csv_summary.balance_fixes,
+            warnings=csv_summary.warnings,
+        )
+
         uploaded_files[session_id] = df.write_csv().encode("utf-8")
+        csv_processing_summaries[session_id] = csv_processing_summary
         return UploadResponse(
             session_id=session_id,
             message=f"Trade history uploaded successfully. Session ID: {session_id}",
-            csv_summary=CsvProcessingSummary(
-                status=csv_summary.status,
-                source_name=csv_summary.source_name,
-                empty_cells=csv_summary.empty_cells,
-                quantity_fills=csv_summary.quantity_fills,
-                entry_fills=csv_summary.entry_fills,
-                exit_fills=csv_summary.exit_fills,
-                profit_fixes=csv_summary.profit_fixes,
-                balance_fixes=csv_summary.balance_fixes,
-                warnings=csv_summary.warnings,
-            ),
+            csv_summary=csv_processing_summary,
         )
     except HTTPException:
         raise
@@ -342,6 +345,7 @@ async def analyze_trading_history(session_id: str):
                 "total_profit_loss": round(total_profit_loss, 2) if df.height > 0 else 0,
                 "primary_trader_type": trader_type_analysis["type"],
             },
+            csv_summary=csv_processing_summaries.get(session_id),
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(exc)}")
