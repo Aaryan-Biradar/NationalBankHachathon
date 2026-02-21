@@ -1,5 +1,6 @@
 import os
 
+import polars as pl
 import xgboost as xgb
 
 from .schemas import AnalysisStoreRecord, CsvProcessingSummary
@@ -11,7 +12,7 @@ TRADER_TYPES = {
     3: "revenge_trader",
 }
 
-uploaded_files: dict[str, bytes] = {}
+uploaded_files: dict[str, pl.DataFrame] = {}
 analysis_results: dict[str, AnalysisStoreRecord] = {}
 csv_processing_summaries: dict[str, CsvProcessingSummary] = {}
 model: xgb.Booster | None = None
