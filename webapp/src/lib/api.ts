@@ -1,6 +1,6 @@
 import type { AnalysisResult, Trade } from '../types'
 
-export const API_BASE_URL = "https://1bxdwrf2-8000.use.devtunnels.ms";
+export const API_BASE_URL = "http://localhost:8000";
 
 async function readErrorDetails(response: Response): Promise<string> {
   const text = (await response.text()).trim()
@@ -137,7 +137,7 @@ export async function getTrades(sessionId: string, signal?: AbortSignal): Promis
   }
 
   const data = await response.json()
-  
+
   // Convert API format to frontend format
   return data.data.map((trade: any) => ({
     timestamp: trade.timestamp || new Date().toISOString(),
@@ -234,7 +234,7 @@ export function mapApiResponseToAnalysis(
   })
 
   // Get recommendations from the primary bias
-  const primaryBias = apiResponse.biases_detected.find((bias) => 
+  const primaryBias = apiResponse.biases_detected.find((bias) =>
     bias.type.toLowerCase().replace(/\s+/g, '_') === primaryType.toLowerCase().replace(/\s+/g, '_')
   )
 
@@ -306,7 +306,7 @@ export function mapApiResponseToAnalysis(
     biases: {
       overtrading: {
         score: biasMap['overtrader'] ?? 0,
-      confidence: 85,
+        confidence: 85,
         evidence: [`${tradesPerHour.toFixed(1)} trades/hour`, `${maxHourlyTrades} trades in busiest hour`],
       },
       lossAversion: {
@@ -342,7 +342,7 @@ export function mapApiResponseToAnalysis(
       label: riskLabel,
       rationale: `Based on ${tradesPerHour.toFixed(1)} trades/hour and behavioral patterns`,
     },
-    portfolioSuggestion: riskScore > 60 
+    portfolioSuggestion: riskScore > 60
       ? 'Consider diversifying across multiple timeframes and reducing single-trade exposure'
       : 'Maintain current portfolio allocation with periodic rebalancing',
     metrics: {
@@ -365,11 +365,11 @@ export function mapApiResponseToAnalysis(
     },
     heatmap: payload
       ? {
-          oneHour: payload.heatmap.one_hour,
-          twoHour: payload.heatmap.two_hour,
-          fourHour: payload.heatmap.four_hour,
-          session: payload.heatmap.session,
-        }
+        oneHour: payload.heatmap.one_hour,
+        twoHour: payload.heatmap.two_hour,
+        fourHour: payload.heatmap.four_hour,
+        session: payload.heatmap.session,
+      }
       : undefined,
     trades: chartTrades,
   }
