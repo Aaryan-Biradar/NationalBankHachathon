@@ -1,6 +1,6 @@
 # Sentinel
 
-Sentinel is a hackathon project for detecting trading behavior patterns from trade history.
+Sentinel is a hackathon project for detecting trading behavior patterns from trade history. Test
 
 It has:
 - a React + TypeScript frontend (`webapp/`)
